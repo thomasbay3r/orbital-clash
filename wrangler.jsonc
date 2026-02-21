@@ -1,0 +1,38 @@
+{
+  "name": "orbital-clash",
+  "main": "src/server/index.ts",
+  "compatibility_date": "2025-02-14",
+  "compatibility_flags": ["nodejs_compat"],
+
+  // Durable Objects for real-time game rooms
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "GAME_ROOM",
+        "class_name": "GameRoom"
+      }
+    ]
+  },
+
+  // D1 database for player accounts and progression
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "orbital-clash-db",
+      "database_id": ""
+    }
+  ],
+
+  // Migrations for Durable Objects
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_classes": ["GameRoom"]
+    }
+  ],
+
+  // Static assets (client build)
+  "assets": {
+    "directory": "dist"
+  }
+}
