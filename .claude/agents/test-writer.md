@@ -16,17 +16,17 @@ You are a test-writing specialist for Orbital Clash. Your job is to identify mis
 
 | Source | Test file | Status |
 |--------|-----------|--------|
-| `src/shared/physics.ts` | `src/shared/physics.test.ts` | Done |
-| `src/shared/game-simulation.ts` | `src/shared/game-simulation.test.ts` | Done |
-| `src/shared/constants.ts` | `src/shared/mods.test.ts` | Done (mod/mode/map config) |
+| `src/shared/physics.ts` | `src/shared/physics.test.ts` | Done (25 tests) |
+| `src/shared/game-simulation.ts` | `src/shared/game-simulation.test.ts` | Done (50 tests) |
+| `src/shared/constants.ts` | `src/shared/mods.test.ts` | Done (24 tests — mod/mode/map config) |
 | `src/shared/types.ts` | — | Types only, no tests needed |
-| `src/shared/maps.ts` | — | **Could use validation tests** |
-| `src/client/game/bot.ts` | — | **Could use AI behavior tests** |
-| `src/client/game/input.ts` | — | Browser API dependent |
-| `src/client/rendering/renderer.ts` | — | Canvas dependent |
-| `src/client/audio/audio-manager.ts` | — | Web Audio dependent |
-| `src/server/index.ts` | — | Worker runtime dependent |
-| `src/server/game-room.ts` | — | Durable Object dependent |
+| `src/shared/maps.ts` | `src/shared/maps.test.ts` | Done (37 tests — validation, bounds, consistency) |
+| `src/client/game/bot.ts` | `src/client/game/bot.test.ts` | Done (19 tests — AI behavior, movement, shooting) |
+| `src/client/game/input.ts` | — | E2E only (Browser API) |
+| `src/client/rendering/renderer.ts` | — | E2E only (Canvas API) |
+| `src/client/audio/audio-manager.ts` | — | E2E only (Web Audio API) |
+| `src/server/index.ts` | — | E2E only (Worker runtime) |
+| `src/server/game-room.ts` | — | E2E only (Durable Object) |
 
 ## Where new tests are needed
 

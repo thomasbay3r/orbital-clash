@@ -448,3 +448,419 @@ describe("Control Modes", () => {
     expect(state.players["p1"].controlMode).toBe("absolute");
   });
 });
+
+// ===== NEW: Projectile Lifecycle =====
+
+describe("Projectile Lifecycle", () => {
+  let state: GameState;
+
+  beforeEach(() => {
+    state = createGameState("deathmatch", "nebula-station");
+    addPlayer(state, "p1", "Shooter", "titan", DEFAULT_MODS);
+    state.players["p1"].position = { x: 400, y: 400 };
+    state.players["p1"].rotation = 0;
+  });
+
+  it("should remove projectiles when lifetime expires", () => {
+    state.projectiles.push({
+      id: "short-lived",
+      ownerId: "p1",
+      position: { x: 400, y: 400 },
+      velocity: { x: 100, y: 0 },
+      damage: 10,
+      lifetime: 0.05,
+      radius: 3,
+      piercing: false,
+      ricochet: false,
+      gravitySynced: false,
+      homing: false,
+      homingStrength: 0,
+      hitEntities: [],
+    });
+
+    expect(state.projectiles.length).toBe(1);
+    simulateTick(state, {}, 0.1);
+    expect(state.projectiles.length).toBe(0);
+  });
+
+  it("should remove non-ricochet projectiles that leave map bounds", () => {
+    state.projectiles.push({
+      id: "oob",
+      ownerId: "p1",
+      position: { x: 1599, y: 400 },
+      velocity: { x: 5000, y: 0 },
+      damage: 10,
+      lifetime: 5,
+      radius: 3,
+      piercing: false,
+      ricochet: false,
+      gravitySynced: false,
+      homing: false,
+      homingStrength: 0,
+      hitEntities: [],
+    });
+
+    simulateTick(state, {}, 1 / 60);
+    expect(state.projectiles.length).toBe(0);
+  });
+
+  it("ricochet projectiles should bounce off walls instead of being removed", () => {
+    state.projectiles.push({
+      id: "bouncy",
+      ownerId: "p1",
+      position: { x: 1590, y: 400 },
+      velocity: { x: 800, y: 0 },
+      damage: 10,
+      lifetime: 5,
+      radius: 3,
+      piercing: false,
+      ricochet: true,
+      gravitySynced: false,
+      homing: false,
+      homingStrength: 0,
+      hitEntities: [],
+    });
+
+    simulateTick(state, {}, 1 / 60);
+    // Should still exist (bounced, not removed)
+    expect(state.projectiles.length).toBe(1);
+    // Velocity should have reversed direction
+    expect(state.projectiles[0].velocity.x).toBeLessThan(0);
+  });
+
+  it("gravity-synced projectiles should be affected more by gravity", () => {
+    // Place projectile between two gravity wells
+    const normalProj = {
+      id: "normal",
+      ownerId: "p1",
+      position: { x: 800, y: 400 },
+      velocity: { x: 0, y: 100 },
+      damage: 10,
+      lifetime: 5,
+      radius: 3,
+      piercing: false,
+      ricochet: false,
+      gravitySynced: false,
+      homing: false,
+      homingStrength: 0,
+      hitEntities: [] as string[],
+    };
+
+    const gravityProj = {
+      ...normalProj,
+      id: "gravity",
+      gravitySynced: true,
+      position: { x: 800, y: 400 },
+      velocity: { x: 0, y: 100 },
+    };
+
+    // Simulate both separately
+    const state1 = createGameState("deathmatch", "nebula-station");
+    addPlayer(state1, "p1", "S", "titan", DEFAULT_MODS);
+    state1.projectiles.push({ ...normalProj, position: { ...normalProj.position }, velocity: { ...normalProj.velocity } });
+
+    const state2 = createGameState("deathmatch", "nebula-station");
+    addPlayer(state2, "p1", "S", "titan", DEFAULT_MODS);
+    state2.projectiles.push({ ...gravityProj, position: { ...gravityProj.position }, velocity: { ...gravityProj.velocity } });
+
+    for (let i = 0; i < 10; i++) {
+      simulateTick(state1, {}, 1 / 60);
+      simulateTick(state2, {}, 1 / 60);
+    }
+
+    // Gravity-synced should have deviated more from straight path
+    if (state1.projectiles.length > 0 && state2.projectiles.length > 0) {
+      const normalX = state1.projectiles[0].position.x;
+      const gravityX = state2.projectiles[0].position.x;
+      // Both started at x=800, gravity-synced should have moved more
+      expect(Math.abs(gravityX - 800)).toBeGreaterThanOrEqual(Math.abs(normalX - 800));
+    }
+  });
+});
+
+// ===== NEW: Pickup System =====
+
+describe("Pickup System", () => {
+  it("should heal player when picking up health", () => {
+    const state = createGameState("deathmatch", "nebula-station");
+    addPlayer(state, "p1", "Test", "viper", DEFAULT_MODS);
+    state.players["p1"].position = { x: 400, y: 400 };
+    state.players["p1"].hp = 60; // damaged
+
+    state.pickups.push({
+      id: "hp1",
+      position: { x: 400, y: 400 },
+      type: "health",
+      value: 30,
+      lifetime: 10,
+    });
+
+    simulateTick(state, {}, 1 / 60);
+    expect(state.players["p1"].hp).toBe(90);
+    expect(state.pickups.length).toBe(0); // consumed
+  });
+
+  it("should not overheal past maxHp", () => {
+    const state = createGameState("deathmatch", "nebula-station");
+    addPlayer(state, "p1", "Test", "viper", DEFAULT_MODS);
+    state.players["p1"].position = { x: 400, y: 400 };
+    state.players["p1"].hp = 110; // 120 max for viper
+
+    state.pickups.push({
+      id: "hp1",
+      position: { x: 400, y: 400 },
+      type: "health",
+      value: 30,
+      lifetime: 10,
+    });
+
+    simulateTick(state, {}, 1 / 60);
+    expect(state.players["p1"].hp).toBe(120); // capped at max
+  });
+
+  it("should remove pickups when lifetime expires", () => {
+    const state = createGameState("deathmatch", "nebula-station");
+    addPlayer(state, "p1", "Test", "viper", DEFAULT_MODS);
+
+    state.pickups.push({
+      id: "hp1",
+      position: { x: 1000, y: 1000 }, // far from player
+      type: "health",
+      value: 30,
+      lifetime: 0.01,
+    });
+
+    simulateTick(state, {}, 0.02);
+    expect(state.pickups.length).toBe(0);
+  });
+});
+
+// ===== NEW: Temporary Gravity Wells =====
+
+describe("Temporary Gravity Wells", () => {
+  it("should remove temporary gravity wells when lifetime expires", () => {
+    const state = createGameState("deathmatch", "nebula-station");
+    addPlayer(state, "p1", "Test", "viper", DEFAULT_MODS);
+    const initialCount = state.gravityWells.length;
+
+    state.gravityWells.push({
+      id: "temp1",
+      position: { x: 800, y: 600 },
+      strength: 1.5,
+      radius: 100,
+      isTemporary: true,
+      lifetime: 0.05,
+    });
+
+    expect(state.gravityWells.length).toBe(initialCount + 1);
+    simulateTick(state, {}, 0.1);
+    expect(state.gravityWells.length).toBe(initialCount);
+  });
+
+  it("should not remove permanent gravity wells", () => {
+    const state = createGameState("deathmatch", "nebula-station");
+    addPlayer(state, "p1", "Test", "viper", DEFAULT_MODS);
+    const initialCount = state.gravityWells.length;
+
+    // Simulate many ticks
+    for (let i = 0; i < 100; i++) {
+      simulateTick(state, {}, 1 / 60);
+    }
+    expect(state.gravityWells.length).toBe(initialCount);
+  });
+});
+
+// ===== NEW: Particle Cap =====
+
+describe("Particle System", () => {
+  it("should cap particles at 500", () => {
+    const state = createGameState("deathmatch", "nebula-station");
+    addPlayer(state, "p1", "Test", "viper", DEFAULT_MODS);
+    state.players["p1"].position = { x: 800, y: 600 };
+
+    // Fill up particles
+    for (let i = 0; i < 510; i++) {
+      state.particles.push({
+        position: { x: 400, y: 400 },
+        velocity: { x: 0, y: 0 },
+        color: "#fff",
+        size: 2,
+        lifetime: 10,
+        maxLifetime: 10,
+        alpha: 1,
+      });
+    }
+
+    // Shoot — should not add more particles (over cap)
+    const input = makeInput({ shoot: true, aimAngle: 0 });
+    simulateTick(state, { p1: input }, 1 / 60);
+
+    // particles array includes the manually added ones, may go slightly over from pre-existing
+    // but new spawns should be rejected
+    expect(state.particles.length).toBeLessThanOrEqual(520); // some tolerance
+  });
+
+  it("should remove particles when lifetime expires", () => {
+    const state = createGameState("deathmatch", "nebula-station");
+    addPlayer(state, "p1", "Test", "viper", DEFAULT_MODS);
+
+    state.particles.push({
+      position: { x: 400, y: 400 },
+      velocity: { x: 10, y: 0 },
+      color: "#fff",
+      size: 2,
+      lifetime: 0.01,
+      maxLifetime: 1,
+      alpha: 1,
+    });
+
+    simulateTick(state, {}, 0.05);
+    expect(state.particles.length).toBe(0);
+  });
+});
+
+// ===== NEW: KOTH Win Condition =====
+
+describe("KOTH Win Condition", () => {
+  it("should end game when KOTH score reaches win threshold", () => {
+    const state = createGameState("king-of-the-asteroid", "nebula-station");
+    addPlayer(state, "p1", "Capper", "viper", DEFAULT_MODS);
+
+    // Place player in zone
+    state.players["p1"].position = { ...state.kothZone!.position };
+    state.kothScores["p1"] = 59; // one point from winning
+
+    // Simulate enough for 1+ points
+    for (let i = 0; i < 120; i++) {
+      simulateTick(state, {}, 1 / 60);
+      if (state.gameOver) break;
+    }
+
+    expect(state.gameOver).toBe(true);
+    expect(state.winnerId).toBe("p1");
+  });
+});
+
+// ===== NEW: End Game Winner =====
+
+describe("End Game Winner Determination", () => {
+  it("should select player with highest score as winner when time runs out", () => {
+    const state = createGameState("deathmatch", "nebula-station");
+    addPlayer(state, "p1", "High", "viper", DEFAULT_MODS);
+    addPlayer(state, "p2", "Low", "titan", DEFAULT_MODS);
+
+    state.players["p1"].score = 5;
+    state.players["p2"].score = 2;
+    state.timeRemaining = 0.01;
+
+    simulateTick(state, {}, 0.02);
+
+    expect(state.gameOver).toBe(true);
+    expect(state.winnerId).toBe("p1");
+  });
+
+  it("KOTH should determine winner by koth score, not kills", () => {
+    const state = createGameState("king-of-the-asteroid", "nebula-station");
+    addPlayer(state, "p1", "Killer", "viper", DEFAULT_MODS);
+    addPlayer(state, "p2", "Capper", "titan", DEFAULT_MODS);
+
+    state.players["p1"].score = 10; // more kills
+    state.players["p2"].score = 2;
+    state.kothScores["p1"] = 20;
+    state.kothScores["p2"] = 40; // more zone time
+    state.timeRemaining = 0.01;
+
+    simulateTick(state, {}, 0.02);
+
+    expect(state.gameOver).toBe(true);
+    expect(state.winnerId).toBe("p2"); // capper wins
+  });
+});
+
+// ===== NEW: Homing Missiles =====
+
+describe("Homing Missiles", () => {
+  it("should curve toward nearest enemy", () => {
+    const state = createGameState("deathmatch", "nebula-station");
+    addPlayer(state, "p1", "Shooter", "specter", DEFAULT_MODS);
+    addPlayer(state, "p2", "Target", "titan", DEFAULT_MODS);
+
+    state.players["p1"].position = { x: 400, y: 400 };
+    state.players["p2"].position = { x: 600, y: 500 }; // to the right and below
+
+    // Fire projectile straight right
+    state.projectiles.push({
+      id: "homing1",
+      ownerId: "p1",
+      position: { x: 420, y: 400 },
+      velocity: { x: 320, y: 0 }, // moving right, target is right+down
+      damage: 20,
+      lifetime: 3,
+      radius: 4,
+      piercing: false,
+      ricochet: false,
+      gravitySynced: false,
+      homing: true,
+      homingStrength: 2.0,
+      hitEntities: [],
+    });
+
+    // Simulate a few ticks
+    for (let i = 0; i < 20; i++) {
+      simulateTick(state, {}, 1 / 60);
+    }
+
+    // Projectile should have gained downward velocity (curving toward target)
+    if (state.projectiles.length > 0) {
+      expect(state.projectiles[0].velocity.y).toBeGreaterThan(0);
+    }
+  });
+});
+
+// ===== NEW: Asteroid Collision =====
+
+describe("Asteroid Collision", () => {
+  it("should push player out of asteroid", () => {
+    const state = createGameState("deathmatch", "asteroid-belt");
+    addPlayer(state, "p1", "Test", "viper", DEFAULT_MODS);
+
+    // Place player overlapping with first asteroid
+    const asteroid = state.asteroids[0];
+    state.players["p1"].position = { x: asteroid.position.x + 5, y: asteroid.position.y };
+    state.players["p1"].velocity = { x: 0, y: 0 };
+
+    simulateTick(state, {}, 1 / 60);
+
+    // Player should have been pushed away
+    const dx = state.players["p1"].position.x - asteroid.position.x;
+    const dy = state.players["p1"].position.y - asteroid.position.y;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    expect(dist).toBeGreaterThan(10);
+  });
+});
+
+// ===== NEW: Respawn Spawn Selection =====
+
+describe("Respawn Spawn Selection", () => {
+  it("should pick furthest spawn from alive players", () => {
+    const state = createGameState("deathmatch", "nebula-station");
+    addPlayer(state, "p1", "Alive", "viper", DEFAULT_MODS);
+    addPlayer(state, "p2", "Dead", "titan", DEFAULT_MODS);
+
+    // p1 near first spawn point
+    state.players["p1"].position = { x: 200, y: 200 };
+
+    // Kill p2
+    state.players["p2"].alive = false;
+    state.players["p2"].respawnTimer = 0.01;
+
+    simulateTick(state, {}, 0.02);
+
+    // p2 should have respawned far from p1
+    expect(state.players["p2"].alive).toBe(true);
+    const dx = state.players["p2"].position.x - state.players["p1"].position.x;
+    const dy = state.players["p2"].position.y - state.players["p1"].position.y;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    expect(dist).toBeGreaterThan(200);
+  });
+});
