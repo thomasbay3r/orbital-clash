@@ -474,20 +474,27 @@ function activateSpecial(
 function respawnPlayer(state: GameState, player: PlayerState): void {
   const map = MAPS[state.mapId];
 
-  // Find furthest spawn from all alive players
-  let bestSpawn = map.spawnPoints[0];
-  let bestMinDist = 0;
+  // Find furthest spawn from all alive players, or random spawn if all dead
+  const alivePlayers = Object.values(state.players).filter(
+    (p) => p.alive && p.id !== player.id,
+  );
 
-  for (const spawn of map.spawnPoints) {
-    let minDist = Infinity;
-    for (const other of Object.values(state.players)) {
-      if (!other.alive || other.id === player.id) continue;
-      const d = distance(spawn, other.position);
-      if (d < minDist) minDist = d;
-    }
-    if (minDist > bestMinDist) {
-      bestMinDist = minDist;
-      bestSpawn = spawn;
+  let bestSpawn: typeof map.spawnPoints[0];
+  if (alivePlayers.length === 0) {
+    bestSpawn = map.spawnPoints[Math.floor(Math.random() * map.spawnPoints.length)];
+  } else {
+    bestSpawn = map.spawnPoints[0];
+    let bestMinDist = 0;
+    for (const spawn of map.spawnPoints) {
+      let minDist = Infinity;
+      for (const other of alivePlayers) {
+        const d = distance(spawn, other.position);
+        if (d < minDist) minDist = d;
+      }
+      if (minDist > bestMinDist) {
+        bestMinDist = minDist;
+        bestSpawn = spawn;
+      }
     }
   }
 

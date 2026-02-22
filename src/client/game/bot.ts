@@ -1,5 +1,6 @@
 import { GameState, PlayerInput, PlayerState } from "../../shared/types";
 import { sub, normalize, length, distance, angleDiff, vecFromAngle } from "../../shared/physics";
+import { MAPS } from "../../shared/maps";
 
 /** Simple AI bot for single-player mode */
 export class Bot {
@@ -62,11 +63,11 @@ export class Bot {
         if (perp.x < -0.3) left = true;
         if (perp.x > 0.3) right = true;
       } else {
-        // Too close, back away
-        if (dirToTarget.y > 0.3) up = true;
-        if (dirToTarget.y < -0.3) down = true;
-        if (dirToTarget.x > 0.3) left = true;
-        if (dirToTarget.x < -0.3) right = true;
+        // Too close, back away (move opposite to target direction)
+        if (dirToTarget.y < -0.3) down = true;  // target is above → go down
+        if (dirToTarget.y > 0.3) up = true;     // target is below → go up
+        if (dirToTarget.x < -0.3) right = true; // target is left → go right
+        if (dirToTarget.x > 0.3) left = true;   // target is right → go left
       }
 
       // Shoot when roughly aimed (with difficulty-based accuracy)
@@ -115,7 +116,7 @@ export class Bot {
     }
 
     // Avoid map edges
-    const map = { width: 1600, height: 1200 }; // default
+    const map = MAPS[state.mapId];
     const margin = 100;
     if (me.position.x < margin) right = true;
     if (me.position.x > map.width - margin) left = true;

@@ -50,6 +50,7 @@ export class Game {
   private roomCodeInput = "";
   private lobbyStatus = "";
   private playerName = "Player";
+  private connectionCheckInterval: ReturnType<typeof setInterval> | null = null;
 
   // Audio tracking
   private prevProjectileCount = 0;
@@ -141,7 +142,12 @@ export class Game {
       }
     } else if (this.screen === "online-lobby") {
       if (key === "escape") {
+        if (this.connectionCheckInterval) {
+          clearInterval(this.connectionCheckInterval);
+          this.connectionCheckInterval = null;
+        }
         this.connection.disconnect();
+        this.isOnline = false;
         this.screen = "menu";
       }
       if (key === "backspace") {
@@ -226,14 +232,20 @@ export class Game {
   }
 
   private joinRoom(roomId: string): void {
+    // Clean up any previous connection attempt
+    if (this.connectionCheckInterval) {
+      clearInterval(this.connectionCheckInterval);
+      this.connectionCheckInterval = null;
+    }
+
     this.lobbyStatus = `Joining room ${roomId}...`;
     this.connection.connect(roomId);
     this.isOnline = true;
 
-    // Wait for connection, then join
-    const checkConnection = setInterval(() => {
+    this.connectionCheckInterval = setInterval(() => {
       if (this.connection.connected) {
-        clearInterval(checkConnection);
+        clearInterval(this.connectionCheckInterval!);
+        this.connectionCheckInterval = null;
         const ship = SHIP_OPTIONS[this.selectedShip];
         const mods = this.getMods();
         this.connection.send({ type: "join", name: this.playerName, shipClass: ship, mods });
@@ -241,9 +253,11 @@ export class Game {
       }
     }, 100);
 
-    // Timeout
     setTimeout(() => {
-      clearInterval(checkConnection);
+      if (this.connectionCheckInterval) {
+        clearInterval(this.connectionCheckInterval);
+        this.connectionCheckInterval = null;
+      }
       if (!this.connection.connected) {
         this.lobbyStatus = "Connection timed out. Server may not be deployed.";
       }

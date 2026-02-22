@@ -166,8 +166,10 @@ function cross2D(a: Vec2, b: Vec2): number {
 
 function closestPointOnSegment(p: Vec2, a: Vec2, b: Vec2): Vec2 {
   const ab = sub(b, a);
+  const lenSq = lengthSq(ab);
+  if (lenSq === 0) return a; // degenerate edge: a === b
   const ap = sub(p, a);
-  let t = dot(ap, ab) / lengthSq(ab);
+  let t = dot(ap, ab) / lenSq;
   t = clamp(t, 0, 1);
   return add(a, scale(ab, t));
 }

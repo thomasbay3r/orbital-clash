@@ -140,8 +140,10 @@ export class GameRoom implements DurableObject {
 
   private handleLeave(ws: WebSocket): void {
     const session = this.sessions.get(ws);
-    if (session && this.gameState) {
-      removePlayer(this.gameState, session.playerId);
+    if (session) {
+      if (this.gameState) {
+        removePlayer(this.gameState, session.playerId);
+      }
       this.sessions.delete(ws);
     }
 
