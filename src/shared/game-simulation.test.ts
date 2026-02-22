@@ -3,6 +3,7 @@ import {
   createGameState, addPlayer, removePlayer, simulateTick,
 } from "./game-simulation";
 import { GameState, PlayerInput, ModLoadout } from "./types";
+import { INVULNERABILITY_TIME } from "./constants";
 
 const DEFAULT_MODS: ModLoadout = {
   weapon: "piercing",
@@ -279,5 +280,171 @@ describe("Special Abilities", () => {
     expect(state.gravityWells.length).toBe(initialWells + 1);
     const newWell = state.gravityWells[state.gravityWells.length - 1];
     expect(newWell.isTemporary).toBe(true);
+  });
+});
+
+describe("Respawn Invulnerability", () => {
+  let state: GameState;
+
+  beforeEach(() => {
+    state = createGameState("deathmatch", "nebula-station");
+    addPlayer(state, "p1", "Attacker", "titan", DEFAULT_MODS);
+    addPlayer(state, "p2", "Target", "viper", DEFAULT_MODS);
+    state.players["p1"].position = { x: 400, y: 400 };
+    state.players["p2"].position = { x: 440, y: 400 };
+  });
+
+  it("should initialize players as not invulnerable", () => {
+    expect(state.players["p1"].invulnerable).toBe(false);
+    expect(state.players["p1"].invulnerabilityTimer).toBe(0);
+  });
+
+  it("should set invulnerability on respawn", () => {
+    // Kill p2
+    state.players["p2"].hp = 1;
+    state.projectiles.push({
+      id: "kill",
+      ownerId: "p1",
+      position: { ...state.players["p2"].position },
+      velocity: { x: 0, y: 0 },
+      damage: 50,
+      lifetime: 2,
+      radius: 100,
+      piercing: false,
+      ricochet: false,
+      gravitySynced: false,
+      homing: false,
+      homingStrength: 0,
+      hitEntities: [],
+    });
+    simulateTick(state, {}, 1 / 60);
+    expect(state.players["p2"].alive).toBe(false);
+
+    // Wait for respawn
+    for (let i = 0; i < RESPAWN_TICKS; i++) {
+      simulateTick(state, {}, 1 / 60);
+    }
+    expect(state.players["p2"].alive).toBe(true);
+    expect(state.players["p2"].invulnerable).toBe(true);
+    expect(state.players["p2"].invulnerabilityTimer).toBeCloseTo(INVULNERABILITY_TIME, 0);
+  });
+
+  it("should clear invulnerability after timer expires", () => {
+    state.players["p2"].invulnerable = true;
+    state.players["p2"].invulnerabilityTimer = 0.05;
+
+    simulateTick(state, {}, 0.1);
+    expect(state.players["p2"].invulnerable).toBe(false);
+    expect(state.players["p2"].invulnerabilityTimer).toBe(0);
+  });
+
+  it("should block projectile damage while invulnerable", () => {
+    state.players["p2"].invulnerable = true;
+    state.players["p2"].invulnerabilityTimer = 2;
+    const hpBefore = state.players["p2"].hp;
+
+    state.projectiles.push({
+      id: "blocked",
+      ownerId: "p1",
+      position: { ...state.players["p2"].position },
+      velocity: { x: 0, y: 0 },
+      damage: 50,
+      lifetime: 2,
+      radius: 100,
+      piercing: false,
+      ricochet: false,
+      gravitySynced: false,
+      homing: false,
+      homingStrength: 0,
+      hitEntities: [],
+    });
+    simulateTick(state, {}, 1 / 60);
+    expect(state.players["p2"].hp).toBe(hpBefore);
+  });
+
+  it("should block gravity well damage while invulnerable", () => {
+    // Place p2 inside a gravity well core
+    state.players["p2"].position = { ...state.gravityWells[0].position };
+    state.players["p2"].invulnerable = true;
+    state.players["p2"].invulnerabilityTimer = 2;
+    const hpBefore = state.players["p2"].hp;
+
+    simulateTick(state, {}, 1 / 60);
+    expect(state.players["p2"].hp).toBe(hpBefore);
+  });
+
+  it("should block EMP damage while invulnerable", () => {
+    // Place p2 close to p1 (specter with EMP)
+    const stateEmp = createGameState("deathmatch", "nebula-station");
+    addPlayer(stateEmp, "emp", "EMPer", "specter", DEFAULT_MODS);
+    addPlayer(stateEmp, "target", "Target", "viper", DEFAULT_MODS);
+    stateEmp.players["emp"].position = { x: 400, y: 400 };
+    stateEmp.players["target"].position = { x: 430, y: 400 };
+    stateEmp.players["target"].invulnerable = true;
+    stateEmp.players["target"].invulnerabilityTimer = 2;
+    const hpBefore = stateEmp.players["target"].hp;
+
+    const input = makeInput({ special: true });
+    simulateTick(stateEmp, { emp: input }, 1 / 60);
+    expect(stateEmp.players["target"].hp).toBe(hpBefore);
+  });
+
+  it("should cancel invulnerability when player shoots", () => {
+    state.players["p2"].invulnerable = true;
+    state.players["p2"].invulnerabilityTimer = 2;
+    state.players["p2"].rotation = 0;
+
+    const input = makeInput({ shoot: true, aimAngle: 0 });
+    simulateTick(state, { p2: input }, 1 / 60);
+    expect(state.players["p2"].invulnerable).toBe(false);
+    expect(state.players["p2"].invulnerabilityTimer).toBe(0);
+  });
+});
+
+describe("Control Modes", () => {
+  it("should move up with W in absolute mode", () => {
+    const state = createGameState("deathmatch", "nebula-station");
+    addPlayer(state, "p1", "Abs", "viper", DEFAULT_MODS, "absolute");
+    state.players["p1"].position = { x: 600, y: 500 };
+    state.players["p1"].velocity = { x: 0, y: 0 };
+
+    for (let i = 0; i < 10; i++) {
+      simulateTick(state, { p1: makeInput({ up: true }) }, 1 / 60);
+    }
+    expect(state.players["p1"].position.y).toBeLessThan(500);
+  });
+
+  it("should move forward relative to ship rotation in ship-relative mode", () => {
+    const state = createGameState("deathmatch", "nebula-station");
+    addPlayer(state, "p1", "Rel", "viper", DEFAULT_MODS, "ship-relative");
+    state.players["p1"].position = { x: 600, y: 500 };
+    state.players["p1"].velocity = { x: 0, y: 0 };
+    state.players["p1"].rotation = Math.PI / 2; // facing down
+
+    for (let i = 0; i < 10; i++) {
+      simulateTick(state, { p1: makeInput({ up: true, aimAngle: Math.PI / 2 }) }, 1 / 60);
+    }
+    // Facing down (PI/2) + W = forward = should move down (y increases)
+    expect(state.players["p1"].position.y).toBeGreaterThan(500);
+  });
+
+  it("should strafe in ship-relative mode", () => {
+    const state = createGameState("deathmatch", "nebula-station");
+    addPlayer(state, "p1", "Rel", "viper", DEFAULT_MODS, "ship-relative");
+    state.players["p1"].position = { x: 600, y: 500 };
+    state.players["p1"].velocity = { x: 0, y: 0 };
+    state.players["p1"].rotation = 0; // facing right
+
+    for (let i = 0; i < 10; i++) {
+      simulateTick(state, { p1: makeInput({ right: true, aimAngle: 0 }) }, 1 / 60);
+    }
+    // Facing right (0) + D = strafe right = should move down (y increases)
+    expect(state.players["p1"].position.y).toBeGreaterThan(500);
+  });
+
+  it("should default to absolute control mode", () => {
+    const state = createGameState("deathmatch", "nebula-station");
+    addPlayer(state, "p1", "Default", "viper", DEFAULT_MODS);
+    expect(state.players["p1"].controlMode).toBe("absolute");
   });
 });

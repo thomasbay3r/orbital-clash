@@ -1,0 +1,211 @@
+import { test, expect } from "@playwright/test";
+import { getTestState, waitForScreen, waitForGameReady } from "./helpers";
+
+test.describe("Menu Flow", () => {
+  test.beforeEach(async ({ page }) => {
+    await page.goto("/");
+    await waitForGameReady(page);
+  });
+
+  test("starts on menu screen", async ({ page }) => {
+    const state = await getTestState(page);
+    expect(state.screen).toBe("menu");
+  });
+
+  test("shows ORBITAL CLASH title on canvas", async ({ page }) => {
+    // Take a screenshot and verify the canvas renders (non-empty)
+    const canvas = page.locator("canvas#gameCanvas");
+    const screenshot = await canvas.screenshot();
+    expect(screenshot.byteLength).toBeGreaterThan(1000);
+  });
+
+  test("keyboard 1-4 selects ships", async ({ page }) => {
+    await page.keyboard.press("2");
+    let state = await getTestState(page);
+    expect(state.selectedShip).toBe(1); // 0-indexed: key "2" → index 1 (Titan)
+
+    await page.keyboard.press("4");
+    state = await getTestState(page);
+    expect(state.selectedShip).toBe(3); // Nova
+  });
+
+  test("Q/E cycles maps", async ({ page }) => {
+    const initial = (await getTestState(page)).selectedMap;
+    expect(initial).toBe(0);
+
+    await page.keyboard.press("e");
+    let state = await getTestState(page);
+    expect(state.selectedMap).toBe(1);
+
+    await page.keyboard.press("e");
+    state = await getTestState(page);
+    expect(state.selectedMap).toBe(2);
+
+    await page.keyboard.press("q");
+    state = await getTestState(page);
+    expect(state.selectedMap).toBe(1);
+  });
+
+  test("Z/C cycles modes", async ({ page }) => {
+    await page.keyboard.press("c");
+    let state = await getTestState(page);
+    expect(state.selectedMode).toBe(1);
+
+    await page.keyboard.press("c");
+    state = await getTestState(page);
+    expect(state.selectedMode).toBe(2);
+
+    await page.keyboard.press("z");
+    state = await getTestState(page);
+    expect(state.selectedMode).toBe(1);
+  });
+
+  test("Enter navigates to mod-select", async ({ page }) => {
+    await page.keyboard.press("Enter");
+    await waitForScreen(page, "mod-select");
+  });
+
+  test("M navigates to mod-select with online flow", async ({ page }) => {
+    await page.keyboard.press("m");
+    await waitForScreen(page, "mod-select");
+    const state = await getTestState(page);
+    expect(state.isOnline).toBe(false); // not online yet, just in flow
+  });
+
+  test("mod-select → Escape returns to menu", async ({ page }) => {
+    await page.keyboard.press("Enter");
+    await waitForScreen(page, "mod-select");
+
+    await page.keyboard.press("Escape");
+    await waitForScreen(page, "menu");
+  });
+
+  test("mod-select → Enter goes to settings (local flow)", async ({ page }) => {
+    await page.keyboard.press("Enter"); // menu → mod-select
+    await waitForScreen(page, "mod-select");
+
+    await page.keyboard.press("Enter"); // mod-select → settings
+    await waitForScreen(page, "settings");
+  });
+
+  test("settings → Escape returns to mod-select", async ({ page }) => {
+    await page.keyboard.press("Enter");
+    await waitForScreen(page, "mod-select");
+    await page.keyboard.press("Enter");
+    await waitForScreen(page, "settings");
+
+    await page.keyboard.press("Escape");
+    await waitForScreen(page, "mod-select");
+  });
+
+  test("settings difficulty selection via keyboard", async ({ page }) => {
+    // Navigate to settings
+    await page.keyboard.press("Enter");
+    await waitForScreen(page, "mod-select");
+    await page.keyboard.press("Enter");
+    await waitForScreen(page, "settings");
+
+    // Default difficulty is index 2 (Kopfgeldjäger)
+    let state = await getTestState(page);
+    expect(state.selectedDifficulty).toBe(2);
+
+    // Press "1" to select first difficulty
+    await page.keyboard.press("1");
+    state = await getTestState(page);
+    expect(state.selectedDifficulty).toBe(0);
+
+    // Arrow right to increase
+    await page.keyboard.press("ArrowRight");
+    state = await getTestState(page);
+    expect(state.selectedDifficulty).toBe(1);
+
+    // Press "5" to select hardest
+    await page.keyboard.press("5");
+    state = await getTestState(page);
+    expect(state.selectedDifficulty).toBe(4);
+  });
+
+  test("settings bot count selection via keyboard", async ({ page }) => {
+    await page.keyboard.press("Enter");
+    await waitForScreen(page, "mod-select");
+    await page.keyboard.press("Enter");
+    await waitForScreen(page, "settings");
+
+    // Default bot count is 3
+    let state = await getTestState(page);
+    expect(state.selectedBotCount).toBe(3);
+
+    // Arrow down decreases
+    await page.keyboard.press("ArrowDown");
+    state = await getTestState(page);
+    expect(state.selectedBotCount).toBe(2);
+
+    await page.keyboard.press("ArrowDown");
+    state = await getTestState(page);
+    expect(state.selectedBotCount).toBe(1);
+
+    // Can't go below 1
+    await page.keyboard.press("ArrowDown");
+    state = await getTestState(page);
+    expect(state.selectedBotCount).toBe(1);
+
+    // Arrow up increases
+    await page.keyboard.press("ArrowUp");
+    state = await getTestState(page);
+    expect(state.selectedBotCount).toBe(2);
+  });
+
+  test("Tab cycles control mode in mod-select", async ({ page }) => {
+    await page.keyboard.press("Enter");
+    await waitForScreen(page, "mod-select");
+
+    let state = await getTestState(page);
+    expect(state.selectedControlMode).toBe(0); // absolute
+
+    await page.keyboard.press("Tab");
+    state = await getTestState(page);
+    expect(state.selectedControlMode).toBe(1); // ship-relative
+
+    await page.keyboard.press("Tab");
+    state = await getTestState(page);
+    expect(state.selectedControlMode).toBe(0); // wraps back
+  });
+
+  test("full local flow: menu → mod-select → settings → playing", async ({ page }) => {
+    // Select ship + enter
+    await page.keyboard.press("3"); // Specter
+    await page.keyboard.press("Enter");
+    await waitForScreen(page, "mod-select");
+
+    // Continue to settings
+    await page.keyboard.press("Enter");
+    await waitForScreen(page, "settings");
+
+    // Start game
+    await page.keyboard.press("Enter");
+    await waitForScreen(page, "playing");
+
+    // Game state should exist
+    const state = await getTestState(page);
+    expect(state.gameState).not.toBeNull();
+    expect(state.isOnline).toBe(false);
+  });
+
+  test("online flow: menu → mod-select → online-lobby", async ({ page }) => {
+    await page.keyboard.press("m"); // online flow
+    await waitForScreen(page, "mod-select");
+
+    await page.keyboard.press("Enter"); // mod-select → online-lobby
+    await waitForScreen(page, "online-lobby");
+  });
+
+  test("online-lobby → Escape returns to mod-select", async ({ page }) => {
+    await page.keyboard.press("m");
+    await waitForScreen(page, "mod-select");
+    await page.keyboard.press("Enter");
+    await waitForScreen(page, "online-lobby");
+
+    await page.keyboard.press("Escape");
+    await waitForScreen(page, "mod-select");
+  });
+});

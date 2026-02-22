@@ -5,12 +5,20 @@ import { Bot } from "./bot";
 import { Connection } from "../network/connection";
 import {
   GameState, ShipClass, GameMode, MapId, ModLoadout,
-  PlayerInput, ServerMessage, ControlMode,
+  PlayerInput, ServerMessage, ControlMode, PlayerState, Vec2,
 } from "../../shared/types";
 import {
   createGameState, addPlayer, simulateTick,
 } from "../../shared/game-simulation";
-import { SHIP_CONFIGS, COLORS, DIFFICULTY_PRESETS, DEFAULT_DIFFICULTY_INDEX } from "../../shared/constants";
+import {
+  SHIP_CONFIGS, COLORS, DIFFICULTY_PRESETS, DEFAULT_DIFFICULTY_INDEX,
+  DRIFT_FRICTION, BOOST_MULTIPLIER,
+} from "../../shared/constants";
+import {
+  add, scale, normalize, vecFromAngle, angleDiff, clamp,
+  applyGravity, reflectVelocity,
+} from "../../shared/physics";
+import { MAPS } from "../../shared/maps";
 
 type Screen = "menu" | "mod-select" | "settings" | "playing" | "online-lobby";
 
@@ -64,6 +72,9 @@ export class Game {
   private connectionCheckInterval: ReturnType<typeof setInterval> | null = null;
   private copiedFeedbackTimer = 0;
 
+  // Online prediction/interpolation
+  private remoteTargets: Record<string, { x: number; y: number; vx: number; vy: number; rot: number }> = {};
+
   // Audio tracking
   private prevProjectileCount = 0;
   private prevAliveStates: Record<string, boolean> = {};
@@ -87,6 +98,21 @@ export class Game {
     this.running = true;
     this.lastTime = performance.now();
     requestAnimationFrame((t) => this.loop(t));
+  }
+
+  /** Expose internal state for E2E tests */
+  get _testState() {
+    return {
+      screen: this.screen,
+      selectedShip: this.selectedShip,
+      selectedMap: this.selectedMap,
+      selectedMode: this.selectedMode,
+      selectedControlMode: this.selectedControlMode,
+      selectedDifficulty: this.selectedDifficulty,
+      selectedBotCount: this.selectedBotCount,
+      isOnline: this.isOnline,
+      gameState: this.gameState,
+    };
   }
 
   private loop(time: number): void {
@@ -225,6 +251,7 @@ export class Game {
         this.isOnline = false;
         this.onlineFlow = false;
         this.activeRoomCode = "";
+        this.remoteTargets = {};
       }
     }
   }
@@ -414,6 +441,27 @@ export class Game {
     if (this.isOnline) {
       const input = this.input.getInput();
       this.connection.send({ type: "input", input });
+
+      // Client-side prediction: update local player movement locally
+      const localPlayer = this.gameState.players[this.localPlayerId];
+      if (localPlayer?.alive) {
+        this.predictLocalMovement(localPlayer, input, dt);
+      }
+
+      // Interpolate remote players toward their server positions
+      for (const [id, player] of Object.entries(this.gameState.players)) {
+        if (id === this.localPlayerId) continue;
+        const target = this.remoteTargets[id];
+        if (target) {
+          const t = Math.min(1, dt * 12);
+          player.position.x += (target.x - player.position.x) * t;
+          player.position.y += (target.y - player.position.y) * t;
+          const rotDelta = angleDiff(player.rotation, target.rot);
+          player.rotation += rotDelta * t;
+        }
+      }
+
+      this.processAudioEvents();
       this.renderer.render(this.gameState, this.localPlayerId, dt, this.activeRoomCode, this.copiedFeedbackTimer);
       return;
     }
@@ -427,6 +475,68 @@ export class Game {
     simulateTick(this.gameState, inputs, dt);
     this.processAudioEvents();
     this.renderer.render(this.gameState, this.localPlayerId, dt);
+  }
+
+  private predictLocalMovement(player: PlayerState, input: PlayerInput, dt: number): void {
+    const config = SHIP_CONFIGS[player.shipClass];
+
+    // Rotation toward aim
+    const rotDiff = angleDiff(player.rotation, input.aimAngle);
+    const maxRot = config.rotationSpeed * dt;
+    player.rotation += clamp(rotDiff, -maxRot, maxRot);
+
+    // Friction
+    let friction = DRIFT_FRICTION;
+    if (player.mods.ship === "drift-master") friction = 0.99;
+    player.velocity = scale(player.velocity, Math.pow(friction, dt * 60));
+
+    // Gravity
+    if (this.gameState) {
+      const gravityMul = player.mods.ship === "gravity-anchor" ? 0.3 : 1.0;
+      const gravVel = applyGravity({ x: 0, y: 0 }, player.position, this.gameState.gravityWells, dt);
+      player.velocity = add(player.velocity, scale(gravVel, gravityMul));
+    }
+
+    // Thrust from input
+    let thrustDir: Vec2 | null = null;
+    if (player.controlMode === "ship-relative") {
+      const forward = vecFromAngle(player.rotation);
+      const right = vecFromAngle(player.rotation + Math.PI / 2);
+      let fx = 0, fy = 0;
+      if (input.up) { fx += forward.x; fy += forward.y; }
+      if (input.down) { fx -= forward.x * 0.5; fy -= forward.y * 0.5; }
+      if (input.left) { fx -= right.x; fy -= right.y; }
+      if (input.right) { fx += right.x; fy += right.y; }
+      if (fx !== 0 || fy !== 0) thrustDir = normalize({ x: fx, y: fy });
+    } else {
+      let tx = 0, ty = 0;
+      if (input.up) ty -= 1;
+      if (input.down) ty += 1;
+      if (input.left) tx -= 1;
+      if (input.right) tx += 1;
+      if (tx !== 0 || ty !== 0) thrustDir = normalize({ x: tx, y: ty });
+    }
+
+    if (thrustDir) {
+      let speed = config.speed;
+      if (player.mods.ship === "drift-master") speed *= 1.1;
+      if (input.boost && player.energy > 0) {
+        const boostMul = player.mods.ship === "afterburner" ? 1.3 : 1.0;
+        speed *= BOOST_MULTIPLIER * boostMul;
+      }
+      player.velocity = add(player.velocity, scale(thrustDir, speed * dt));
+    }
+
+    // Position update
+    player.position = add(player.position, scale(player.velocity, dt));
+
+    // Arena bounds
+    if (this.gameState) {
+      const map = MAPS[this.gameState.mapId];
+      const bounced = reflectVelocity(player.position, player.velocity, config.collisionRadius, map.width, map.height);
+      player.position = bounced.pos;
+      player.velocity = bounced.vel;
+    }
   }
 
   private initAudioTracking(): void {
@@ -465,13 +575,75 @@ export class Game {
     }
   }
 
+  private reconcileWithServer(serverState: GameState): void {
+    if (!this.gameState) return;
+
+    // Save predicted local player state
+    const localPlayer = this.gameState.players[this.localPlayerId];
+    const predicted = localPlayer ? {
+      x: localPlayer.position.x, y: localPlayer.position.y,
+      vx: localPlayer.velocity.x, vy: localPlayer.velocity.y,
+      rot: localPlayer.rotation,
+    } : null;
+
+    // Save rendered remote positions for smooth interpolation
+    const rendered: Record<string, { x: number; y: number; rot: number }> = {};
+    for (const [id, player] of Object.entries(this.gameState.players)) {
+      if (id === this.localPlayerId) continue;
+      rendered[id] = { x: player.position.x, y: player.position.y, rot: player.rotation };
+    }
+
+    // Update interpolation targets for remote players
+    for (const [id, player] of Object.entries(serverState.players)) {
+      if (id === this.localPlayerId) continue;
+      this.remoteTargets[id] = {
+        x: player.position.x, y: player.position.y,
+        vx: player.velocity.x, vy: player.velocity.y,
+        rot: player.rotation,
+      };
+    }
+
+    // Take server state as authoritative
+    this.gameState = serverState;
+
+    // Soft-correct local player toward server (keep prediction, blend toward authority)
+    if (predicted && this.gameState.players[this.localPlayerId]) {
+      const p = this.gameState.players[this.localPlayerId];
+      const t = 0.3;
+      p.position.x = predicted.x + (p.position.x - predicted.x) * t;
+      p.position.y = predicted.y + (p.position.y - predicted.y) * t;
+      p.velocity.x = predicted.vx + (p.velocity.x - predicted.vx) * t;
+      p.velocity.y = predicted.vy + (p.velocity.y - predicted.vy) * t;
+      p.rotation = predicted.rot;
+    }
+
+    // Restore rendered positions for remote players (interpolation will catch up)
+    for (const [id, r] of Object.entries(rendered)) {
+      const p = this.gameState.players[id];
+      if (p && p.alive) {
+        p.position.x = r.x;
+        p.position.y = r.y;
+        p.rotation = r.rot;
+      }
+    }
+
+    // Clean up targets for removed players
+    for (const id of Object.keys(this.remoteTargets)) {
+      if (!serverState.players[id]) delete this.remoteTargets[id];
+    }
+  }
+
   private handleServerMessage(msg: ServerMessage): void {
     switch (msg.type) {
       case "state":
-        this.gameState = msg.state;
-        if (this.screen === "online-lobby") {
-          this.screen = "playing";
-          this.initAudioTracking();
+        if (this.screen === "playing" && this.gameState) {
+          this.reconcileWithServer(msg.state);
+        } else {
+          this.gameState = msg.state;
+          if (this.screen === "online-lobby") {
+            this.screen = "playing";
+            this.initAudioTracking();
+          }
         }
         break;
       case "joined":

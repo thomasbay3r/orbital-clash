@@ -5,8 +5,9 @@ Top-down multiplayer space arena game with gravity mechanics, running in the bro
 ## Tech Stack
 - **Frontend**: TypeScript + HTML5 Canvas + Vite
 - **Backend**: Cloudflare Workers + Durable Objects (game rooms) + D1 (database)
-- **Testing**: Vitest (61 tests across 3 test files)
+- **Testing**: Vitest (unit) + Playwright (E2E)
 - **Audio**: Programmatic Web Audio API (no external assets)
+- **Deployment**: `https://orbital-clash.thomas-bay3r.workers.dev`
 
 ## Project Structure
 ```
@@ -14,11 +15,11 @@ src/
   client/
     main.ts              # Entry point
     game/
-      game.ts            # Main game orchestrator (menu, lobby, play)
+      game.ts            # Main game orchestrator (menus, lobby, settings, play)
       input.ts           # Keyboard/mouse input handler
-      bot.ts             # AI bot for single-player
+      bot.ts             # AI bot with difficulty presets
     rendering/
-      renderer.ts        # Full Canvas renderer (ships, HUD, particles)
+      renderer.ts        # Full Canvas renderer (ships, HUD, particles, invulnerability)
     audio/
       audio-manager.ts   # Programmatic sound effects
     network/
@@ -29,24 +30,29 @@ src/
     schema.sql           # D1 database schema
   shared/
     types.ts             # All TypeScript types
-    constants.ts         # Game config (ships, weapons, specials, mods)
+    constants.ts         # Game config (ships, weapons, specials, mods, difficulty presets)
     physics.ts           # Vector math, gravity, collision detection
     maps.ts              # Map definitions (3 maps)
     game-simulation.ts   # Core game simulation engine (shared client/server)
-    physics.test.ts      # Physics tests (25 tests)
-    game-simulation.test.ts  # Simulation tests (22 tests)
-    mods.test.ts         # Mod/mode/map tests (14 tests)
+    physics.test.ts      # Physics tests
+    game-simulation.test.ts  # Simulation tests
+    mods.test.ts         # Mod/mode/map tests
+e2e/
+  helpers.ts             # E2E test utilities (getTestState, waitForScreen)
+  menu-flow.spec.ts      # Menu navigation E2E tests (16 tests)
+  gameplay.spec.ts       # Gameplay E2E tests (11 tests)
 public/
   index.html             # HTML entry point with canvas
 ```
 
 ## Commands
-- `npm run dev:client` - Start Vite dev server (client)
-- `npm run dev:server` - Start wrangler dev (Workers)
-- `npm run build` - Build client for production
-- `npm run deploy` - Deploy Workers to Cloudflare
-- `npm run typecheck` - Run TypeScript type checking
-- `npm test` - Run all tests with Vitest
+- `npm run dev:client` — Start Vite dev server (client)
+- `npm run dev:server` — Start wrangler dev (Workers)
+- `npm run build` — Build client for production
+- `npm run deploy` — Deploy Workers to Cloudflare
+- `npm run typecheck` — Run TypeScript type checking
+- `npm test` — Run unit tests with Vitest
+- `npm run test:e2e` — Run E2E tests with Playwright (Chromium, port 4173)
 
 ## Architecture
 
@@ -60,19 +66,35 @@ The core game loop (`game-simulation.ts`) is shared between client and server.
 - Gravity wells attract players and projectiles
 - Ships have drift-based movement (thrust + friction)
 - Arena bounds use velocity reflection (bounce off walls)
-- Circle-circle and circle-polygon collision detection
+- Circle-circle collision detection
 
 ### Game Content
 - **4 ship classes**: Viper (speed), Titan (tank), Specter (disruptor), Nova (zone control)
-- **4 weapon types**: Pulse Cannon, Plasma Bolts, Phase Beam, Gravity Orbs
+- **4 weapon types**: Dual-Shot, Heavy-Shot, Homing-Missile, Spread-Shot
 - **4 special abilities**: Phase Dash, Shield Bubble, EMP Pulse, Gravity Bomb
-- **12 mods**: 4 weapon, 4 ship, 4 passive - each modifies gameplay
+- **12 mods**: 4 weapon, 4 ship, 4 passive — each modifies gameplay
 - **4 game modes**: Deathmatch, Duel, King of the Asteroid, Gravity Shift
 - **3 maps**: Nebula Station, Asteroid Belt, The Singularity
+- **2 control modes**: Standard (WASD absolute), Ship-Relative (W/S forward/back, A/D strafe)
+
+### Bot System
+- 5 difficulty presets (Weltraumtourist through Lebensmuede)
+- Preset-driven AI: aim error, shoot delay, shoot threshold, special probability, circle strafing
+- Configurable bot count (1-3) in settings screen before local game
+
+### Respawn Invulnerability
+- 2.5s invulnerability after respawn
+- Blocks all damage (projectiles, gravity wells, EMP)
+- Cancelled when player fires
+- Visual: blinking transparency + pulsing glow ring
 
 ### Multiplayer
-- WebSocket via Durable Objects (game rooms)
+- WebSocket via Durable Objects (game rooms with room codes)
 - Server runs simulation at 60Hz, broadcasts state at 20Hz
+- Client-side prediction: local player movement simulated locally for instant feedback
+- Server reconciliation: soft-correct predicted position toward server (30% blend)
+- Remote player interpolation: lerp toward server positions for smooth movement
+- Room code display in lobby and HUD with copy-to-clipboard
 - Room create/join via REST API, game via WebSocket
 
 ### Accounts & Progression
@@ -80,10 +102,18 @@ The core game loop (`game-simulation.ts`) is shared between client and server.
 - XP, levels, ranks (bronze through diamond)
 - Mod/cosmetic unlock system via D1 database
 
+## Menu Flow
+```
+Menu (ship, map, mode) → Mod-Select (weapon, ship, passive, control mode)
+  → Settings (difficulty, bot count) → Local Game
+  → Online Lobby (create/join room) → Multiplayer Game
+```
+
 ## Key Design Decisions
 - Server-authoritative: physics run on server, client sends inputs only
-- All graphics are programmatic (Canvas API) - no external image assets
-- All audio is programmatic (Web Audio API) - no external sound files
+- All graphics are programmatic (Canvas API) — no external image assets
+- All audio is programmatic (Web Audio API) — no external sound files
 - Gravity wells are the core mechanic differentiating gameplay
 - Physics always applies to all players regardless of input (gravity, friction, bounds)
+- UI language is German
 - Game design document: `2026-02-21-orbital-clash-design.md`

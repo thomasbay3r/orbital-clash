@@ -3,6 +3,11 @@ import {
   createGameState, addPlayer, simulateTick,
 } from "./game-simulation";
 import { GameState, PlayerInput, ModLoadout } from "./types";
+import {
+  DIFFICULTY_PRESETS, DEFAULT_DIFFICULTY_INDEX,
+  SHIP_CONFIGS, WEAPON_CONFIGS, SPECIAL_CONFIGS,
+  INVULNERABILITY_TIME, RESPAWN_TIME,
+} from "./constants";
 
 function makeInput(overrides: Partial<PlayerInput> = {}): PlayerInput {
   return {
@@ -294,5 +299,92 @@ describe("Map-specific Tests", () => {
 
     // Should be pulled toward center (600, 600)
     expect(state.players["p1"].position.x).toBeLessThan(700);
+  });
+});
+
+describe("Difficulty Presets", () => {
+  it("should have exactly 5 presets", () => {
+    expect(DIFFICULTY_PRESETS.length).toBe(5);
+  });
+
+  it("should have valid default difficulty index", () => {
+    expect(DEFAULT_DIFFICULTY_INDEX).toBeGreaterThanOrEqual(0);
+    expect(DEFAULT_DIFFICULTY_INDEX).toBeLessThan(DIFFICULTY_PRESETS.length);
+  });
+
+  it("should have difficulty values in ascending order", () => {
+    for (let i = 1; i < DIFFICULTY_PRESETS.length; i++) {
+      expect(DIFFICULTY_PRESETS[i].difficulty).toBeGreaterThan(
+        DIFFICULTY_PRESETS[i - 1].difficulty,
+      );
+    }
+  });
+
+  it("should have aim error values in descending order (harder = less error)", () => {
+    for (let i = 1; i < DIFFICULTY_PRESETS.length; i++) {
+      expect(DIFFICULTY_PRESETS[i].aimError).toBeLessThan(
+        DIFFICULTY_PRESETS[i - 1].aimError,
+      );
+    }
+  });
+
+  it("should have shoot delay in descending order (harder = faster shooting)", () => {
+    for (let i = 1; i < DIFFICULTY_PRESETS.length; i++) {
+      expect(DIFFICULTY_PRESETS[i].shootDelay).toBeLessThan(
+        DIFFICULTY_PRESETS[i - 1].shootDelay,
+      );
+    }
+  });
+
+  it("presets should have unique ids and names", () => {
+    const ids = DIFFICULTY_PRESETS.map((p) => p.id);
+    const names = DIFFICULTY_PRESETS.map((p) => p.name);
+    expect(new Set(ids).size).toBe(ids.length);
+    expect(new Set(names).size).toBe(names.length);
+  });
+
+  it("all presets should have valid numeric ranges", () => {
+    for (const preset of DIFFICULTY_PRESETS) {
+      expect(preset.difficulty).toBeGreaterThanOrEqual(0);
+      expect(preset.difficulty).toBeLessThanOrEqual(1);
+      expect(preset.aimError).toBeGreaterThanOrEqual(0);
+      expect(preset.shootDelay).toBeGreaterThan(0);
+      expect(preset.shootThreshold).toBeGreaterThan(0);
+      expect(preset.specialProbability).toBeGreaterThanOrEqual(0);
+      expect(preset.specialProbability).toBeLessThanOrEqual(1);
+      expect(preset.approachDistance).toBeGreaterThan(0);
+      expect(preset.retreatDistance).toBeGreaterThan(0);
+      expect(preset.boostThreshold).toBeGreaterThan(0);
+    }
+  });
+});
+
+describe("Ship/Weapon/Special Config Consistency", () => {
+  it("all ship classes should have matching weapon and special configs", () => {
+    for (const [, config] of Object.entries(SHIP_CONFIGS)) {
+      expect(WEAPON_CONFIGS[config.weaponType]).toBeDefined();
+      expect(SPECIAL_CONFIGS[config.specialType]).toBeDefined();
+      expect(config.maxHp).toBeGreaterThan(0);
+      expect(config.speed).toBeGreaterThan(0);
+      expect(config.collisionRadius).toBeGreaterThan(0);
+    }
+  });
+
+  it("all weapon configs should have valid values", () => {
+    for (const [, config] of Object.entries(WEAPON_CONFIGS)) {
+      expect(config.damage).toBeGreaterThan(0);
+      expect(config.speed).toBeGreaterThan(0);
+      expect(config.fireRate).toBeGreaterThan(0);
+      expect(config.projectileCount).toBeGreaterThanOrEqual(1);
+      expect(config.projectileRadius).toBeGreaterThan(0);
+      expect(config.projectileLifetime).toBeGreaterThan(0);
+    }
+  });
+
+  it("game constants should have sensible values", () => {
+    expect(INVULNERABILITY_TIME).toBeGreaterThan(0);
+    expect(INVULNERABILITY_TIME).toBeLessThanOrEqual(5);
+    expect(RESPAWN_TIME).toBeGreaterThan(0);
+    expect(RESPAWN_TIME).toBeLessThanOrEqual(10);
   });
 });

@@ -7,3 +7,6 @@ if (!canvas) {
 
 const game = new Game(canvas);
 game.start();
+
+// Expose for E2E tests
+(window as any).__game = game;

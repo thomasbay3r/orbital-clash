@@ -26,3 +26,12 @@ npm-debug.log*
 
 # TypeScript
 *.tsbuildinfo
+
+# Playwright
+test-results/
+playwright-report/
+.playwright-mcp/
+
+# Screenshots (temp)
+*.png
+screenshots/
