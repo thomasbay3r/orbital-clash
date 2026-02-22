@@ -208,4 +208,37 @@ test.describe("Menu Flow", () => {
     await page.keyboard.press("Escape");
     await waitForScreen(page, "mod-select");
   });
+
+  test("map cycling wraps around (E past last → first)", async ({ page }) => {
+    // 3 maps: 0, 1, 2 → wraps to 0
+    await page.keyboard.press("e"); // 0→1
+    await page.keyboard.press("e"); // 1→2
+    await page.keyboard.press("e"); // 2→0 (wrap)
+    const state = await getTestState(page);
+    expect(state.selectedMap).toBe(0);
+  });
+
+  test("map cycling wraps around (Q past first → last)", async ({ page }) => {
+    // From 0, Q should wrap to 2
+    await page.keyboard.press("q");
+    const state = await getTestState(page);
+    expect(state.selectedMap).toBe(2);
+  });
+
+  test("mode cycling wraps around (C past last → first)", async ({ page }) => {
+    // 4 modes: 0, 1, 2, 3 → wraps to 0
+    await page.keyboard.press("c"); // 0→1
+    await page.keyboard.press("c"); // 1→2
+    await page.keyboard.press("c"); // 2→3
+    await page.keyboard.press("c"); // 3→0 (wrap)
+    const state = await getTestState(page);
+    expect(state.selectedMode).toBe(0);
+  });
+
+  test("mode cycling wraps around (Z past first → last)", async ({ page }) => {
+    // From 0, Z should wrap to 3
+    await page.keyboard.press("z");
+    const state = await getTestState(page);
+    expect(state.selectedMode).toBe(3);
+  });
 });

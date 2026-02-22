@@ -159,4 +159,85 @@ test.describe("Gameplay", () => {
     const playerIds = Object.keys(state.gameState.players);
     expect(playerIds.length).toBe(2); // local + 1 bot
   });
+
+  test("mod selection persists into gameplay", async ({ page }) => {
+    await page.keyboard.press("Enter"); // menu → mod-select
+    await waitForScreen(page, "mod-select");
+
+    // Select weapon mod 2 (gravity-sync, index 1 = key "2")
+    await page.keyboard.press("2");
+
+    // Select ship mod 3 (drift-master, index 2 = Ctrl+3)
+    await page.keyboard.press("Control+3");
+
+    // Select passive mod 4 (radar, index 3 = Shift+4)
+    await page.keyboard.press("Shift+4");
+
+    await page.keyboard.press("Enter"); // mod-select → settings
+    await waitForScreen(page, "settings");
+    await page.keyboard.press("Enter"); // settings → playing
+    await waitForScreen(page, "playing");
+
+    const state = await getTestState(page);
+    const player = state.gameState.players["local-player"];
+    expect(player.mods.weapon).toBe("ricochet");      // index 1
+    expect(player.mods.ship).toBe("drift-master");     // index 2
+    expect(player.mods.passive).toBe("radar");          // index 3
+  });
+
+  test("king-of-the-asteroid mode starts correctly", async ({ page }) => {
+    await page.keyboard.press("c"); // mode 0→1 (king-of-the-asteroid)
+
+    const menuState = await getTestState(page);
+    expect(menuState.selectedMode).toBe(1);
+
+    await startLocalGame(page);
+
+    const state = await getTestState(page);
+    expect(state.gameState.gameMode).toBe("king-of-the-asteroid");
+  });
+
+  test("gravity-shift mode starts correctly", async ({ page }) => {
+    await page.keyboard.press("c"); // mode 0→1
+    await page.keyboard.press("c"); // mode 1→2 (gravity-shift)
+
+    const menuState = await getTestState(page);
+    expect(menuState.selectedMode).toBe(2);
+
+    await startLocalGame(page);
+
+    const state = await getTestState(page);
+    expect(state.gameState.gameMode).toBe("gravity-shift");
+  });
+
+  test("map selection affects game state", async ({ page }) => {
+    // Select asteroid-belt (index 1)
+    await page.keyboard.press("e"); // map 0→1
+
+    await startLocalGame(page);
+
+    const state = await getTestState(page);
+    expect(state.gameState.mapId).toBe("asteroid-belt");
+    // Asteroid Belt has 3 gravity wells vs Nebula Station's 2
+    expect(state.gameState.gravityWells.length).toBe(3);
+  });
+
+  test("control mode selection persists into gameplay", async ({ page }) => {
+    await page.keyboard.press("Enter"); // menu → mod-select
+    await waitForScreen(page, "mod-select");
+
+    // Switch to ship-relative
+    await page.keyboard.press("Tab");
+    const modState = await getTestState(page);
+    expect(modState.selectedControlMode).toBe(1);
+
+    await page.keyboard.press("Enter"); // mod-select → settings
+    await waitForScreen(page, "settings");
+    await page.keyboard.press("Enter"); // settings → playing
+    await waitForScreen(page, "playing");
+
+    const state = await getTestState(page);
+    const player = state.gameState.players["local-player"];
+    expect(player.controlMode).toBe("ship-relative");
+  });
 });

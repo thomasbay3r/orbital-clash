@@ -1,8 +1,8 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect } from "vitest";
 import { Bot } from "./bot";
-import { GameState, PlayerState, PlayerInput, ModLoadout } from "../../shared/types";
+import { GameState, ModLoadout } from "../../shared/types";
 import { createGameState, addPlayer } from "../../shared/game-simulation";
-import { DIFFICULTY_PRESETS, BotDifficultyPreset } from "../../shared/constants";
+import { DIFFICULTY_PRESETS } from "../../shared/constants";
 
 const DEFAULT_MODS: ModLoadout = {
   weapon: "piercing",
@@ -77,6 +77,44 @@ describe("Bot - Target Selection", () => {
     const input = bot.getInput(state);
     // Should wander, not shoot at self
     expect(input.shoot).toBe(false);
+  });
+
+  it("should return empty input when bot is not in state", () => {
+    const state = createGameState("deathmatch", "nebula-station");
+    // Don't add bot1 to state at all
+    addPlayer(state, "enemy1", "Enemy", "titan", DEFAULT_MODS);
+
+    const bot = new Bot("bot1", EASY_PRESET);
+    const input = bot.getInput(state);
+
+    expect(input.up).toBe(false);
+    expect(input.down).toBe(false);
+    expect(input.left).toBe(false);
+    expect(input.right).toBe(false);
+    expect(input.shoot).toBe(false);
+    expect(input.special).toBe(false);
+    expect(input.boost).toBe(false);
+  });
+
+  it("should find new target when current target dies", () => {
+    const state = makeState();
+    addPlayer(state, "enemy2", "Enemy2", "nova", DEFAULT_MODS);
+    state.players["bot1"].position = { x: 400, y: 400 };
+    state.players["enemy1"].position = { x: 500, y: 400 };
+    state.players["enemy2"].position = { x: 600, y: 400 };
+
+    const bot = new Bot("bot1", EASY_PRESET);
+
+    // First tick: bot acquires a target
+    bot.getInput(state);
+
+    // Kill enemy1 (closest)
+    state.players["enemy1"].alive = false;
+
+    // Bot should still produce movement toward enemy2
+    const input = bot.getInput(state);
+    const hasMovement = input.up || input.down || input.left || input.right;
+    expect(hasMovement).toBe(true);
   });
 });
 
@@ -220,6 +258,26 @@ describe("Bot - Special Ability", () => {
 
     expect(input.special).toBe(false);
   });
+
+  it("should not use special when cooldown is active", () => {
+    const state = makeState();
+    state.players["bot1"].position = { x: 400, y: 400 };
+    state.players["bot1"].specialCooldown = 5; // cooldown active
+    state.players["enemy1"].position = { x: 500, y: 400 }; // within 300px
+
+    const bot = new Bot("bot1", HARD_PRESET);
+
+    // Even over many ticks, special should never fire with cooldown > 0
+    let specialUsed = false;
+    for (let i = 0; i < 300; i++) {
+      const input = bot.getInput(state);
+      if (input.special) {
+        specialUsed = true;
+        break;
+      }
+    }
+    expect(specialUsed).toBe(false);
+  });
 });
 
 describe("Bot - Gravity Well Avoidance", () => {
@@ -296,5 +354,78 @@ describe("Bot - Input Structure", () => {
     expect(typeof input.aimAngle).toBe("number");
     expect(input.tick).toBe(0);
     expect(Number.isFinite(input.aimAngle)).toBe(true);
+  });
+});
+
+describe("Bot - All Difficulty Presets", () => {
+  it.each(DIFFICULTY_PRESETS.map((p, i) => [p.name, i] as const))(
+    "%s preset should produce valid input with target",
+    (_name, index) => {
+      const preset = DIFFICULTY_PRESETS[index];
+      const state = makeState();
+      state.players["bot1"].position = { x: 400, y: 400 };
+      state.players["enemy1"].position = { x: 600, y: 400 };
+
+      const bot = new Bot("bot1", preset);
+      const input = bot.getInput(state);
+
+      expect(typeof input.up).toBe("boolean");
+      expect(typeof input.shoot).toBe("boolean");
+      expect(typeof input.special).toBe("boolean");
+      expect(typeof input.aimAngle).toBe("number");
+      expect(Number.isFinite(input.aimAngle)).toBe(true);
+    },
+  );
+
+  it.each(DIFFICULTY_PRESETS.map((p, i) => [p.name, i] as const))(
+    "%s preset should produce valid input without target",
+    (_name, index) => {
+      const preset = DIFFICULTY_PRESETS[index];
+      const state = createGameState("deathmatch", "nebula-station");
+      addPlayer(state, "bot1", "Bot", "viper", DEFAULT_MODS);
+      state.players["bot1"].position = { x: 600, y: 600 };
+
+      const bot = new Bot("bot1", preset);
+      const input = bot.getInput(state);
+
+      expect(input.shoot).toBe(false);
+      expect(Number.isFinite(input.aimAngle)).toBe(true);
+    },
+  );
+});
+
+describe("Bot - Aim Error by Difficulty", () => {
+  it("easy bots should have more aim variance than hard bots", () => {
+    const state = makeState();
+    state.players["bot1"].position = { x: 400, y: 400 };
+    state.players["bot1"].rotation = 0;
+    state.players["enemy1"].position = { x: 500, y: 400 }; // directly right → ideal aimAngle ≈ 0
+
+    const samples = 200;
+
+    // Collect aim angles from easy bot
+    const easyAngles: number[] = [];
+    for (let i = 0; i < samples; i++) {
+      const bot = new Bot("bot1", EASY_PRESET);
+      const input = bot.getInput(state);
+      easyAngles.push(input.aimAngle);
+    }
+
+    // Collect aim angles from hard bot
+    const hardAngles: number[] = [];
+    for (let i = 0; i < samples; i++) {
+      const bot = new Bot("bot1", HARD_PRESET);
+      const input = bot.getInput(state);
+      hardAngles.push(input.aimAngle);
+    }
+
+    // Calculate variance (spread of aim angles)
+    const variance = (angles: number[]) => {
+      const mean = angles.reduce((a, b) => a + b, 0) / angles.length;
+      return angles.reduce((sum, a) => sum + (a - mean) ** 2, 0) / angles.length;
+    };
+
+    // Easy bots (aimError=0.36) should have noticeably more variance than hard bots (aimError=0.04)
+    expect(variance(easyAngles)).toBeGreaterThan(variance(hardAngles));
   });
 });
