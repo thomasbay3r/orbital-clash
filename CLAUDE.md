@@ -140,6 +140,20 @@ Menu (ship, map, mode) → Mod-Select (weapon, ship, passive, control mode)
 - Auto-deploy hook: runs automatically after every `git push` (via `.claude/hooks/deploy-after-push.js`)
 - Always deploy after pushing changes that affect the client or server
 
+## Browser-Testing (Playwright MCP)
+
+Three levels of visual testing, all via Playwright MCP:
+
+| Command | When | What |
+|---------|------|------|
+| `/visual-testing` | After feature implementation, before PR | Full audit: all views, responsive, console, network, a11y |
+| `/visual-review <url>` | Quick check during development | Desktop + mobile screenshot, console errors |
+| `/smoke-test <url>` | After small changes | Click all buttons/links, check for errors |
+
+- Default URL: `http://localhost:4173` (Vite dev server)
+- Before PR: All critical issues from `/visual-testing` must be fixed
+- Screenshots are saved as PNGs in the working directory
+
 ## Key Design Decisions
 - Server-authoritative: physics run on server, client sends inputs only
 - All graphics are programmatic (Canvas API) — no external image assets
