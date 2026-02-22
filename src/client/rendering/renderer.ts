@@ -58,7 +58,7 @@ export class Renderer {
     }
   }
 
-  render(state: GameState, localPlayerId: string, dt: number): void {
+  render(state: GameState, localPlayerId: string, dt: number, roomCode?: string): void {
     this.time += dt;
     this.canvas.width = window.innerWidth;
     this.canvas.height = window.innerHeight;
@@ -91,7 +91,7 @@ export class Renderer {
 
     // HUD is drawn in screen space
     if (localPlayer) {
-      this.drawHUD(state, localPlayer);
+      this.drawHUD(state, localPlayer, roomCode);
     }
 
     if (state.gameOver) {
@@ -522,7 +522,7 @@ export class Renderer {
 
   // ===== HUD (Screen Space) =====
 
-  drawHUD(state: GameState, player: PlayerState): void {
+  drawHUD(state: GameState, player: PlayerState, roomCode?: string): void {
     const ctx = this.ctx;
     const w = this.canvas.width;
     const h = this.canvas.height;
@@ -558,6 +558,14 @@ export class Renderer {
     ctx.textAlign = "right";
     ctx.fillStyle = state.timeRemaining < 30 ? "#ff4444" : COLORS.ui;
     ctx.fillText(`${mins}:${secs.toString().padStart(2, "0")}`, w - 20, 35);
+
+    // Room code (below timer, top right) for online games
+    if (roomCode) {
+      ctx.font = "11px monospace";
+      ctx.textAlign = "right";
+      ctx.fillStyle = COLORS.uiDim;
+      ctx.fillText(`Raum: ${roomCode}`, w - 20, 55);
+    }
 
     // Scoreboard (top left)
     this.drawScoreboard(state, player.id);

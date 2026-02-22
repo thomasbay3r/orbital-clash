@@ -54,10 +54,12 @@ export class Game {
   private localPlayerId = "local-player";
   private bots: Bot[] = [];
   private isOnline = false;
+  private onlineFlow = false; // true when navigating menus toward multiplayer
 
   // Online lobby state
   private roomCodeInput = "";
   private lobbyStatus = "";
+  private activeRoomCode = ""; // room code shown during gameplay
   private playerName = "Player";
   private connectionCheckInterval: ReturnType<typeof setInterval> | null = null;
 
@@ -137,9 +139,8 @@ export class Game {
         this.screen = "mod-select";
       }
       if (key === "m") {
-        this.screen = "online-lobby";
-        this.roomCodeInput = "";
-        this.lobbyStatus = "";
+        this.onlineFlow = true;
+        this.screen = "mod-select";
       }
     } else if (this.screen === "mod-select") {
       if (key === "1" || key === "2" || key === "3" || key === "4") {
@@ -156,9 +157,16 @@ export class Game {
         this.selectedControlMode = (this.selectedControlMode + 1) % CONTROL_MODE_OPTIONS.length;
       }
       if (key === "enter") {
-        this.screen = "settings";
+        if (this.onlineFlow) {
+          this.screen = "online-lobby";
+          this.roomCodeInput = "";
+          this.lobbyStatus = "";
+        } else {
+          this.screen = "settings";
+        }
       }
       if (key === "escape") {
+        this.onlineFlow = false;
         this.screen = "menu";
       }
     } else if (this.screen === "settings") {
@@ -191,7 +199,7 @@ export class Game {
         }
         this.connection.disconnect();
         this.isOnline = false;
-        this.screen = "menu";
+        this.screen = "mod-select";
       }
       if (key === "backspace") {
         this.roomCodeInput = this.roomCodeInput.slice(0, -1);
@@ -213,6 +221,8 @@ export class Game {
         this.gameState = null;
         this.bots = [];
         this.isOnline = false;
+        this.onlineFlow = false;
+        this.activeRoomCode = "";
       }
     }
   }
@@ -231,9 +241,8 @@ export class Game {
       if (hit.startsWith("mode-")) this.selectedMode = parseInt(hit.split("-")[1]);
       if (hit === "button-weiter") this.screen = "mod-select";
       if (hit === "button-online") {
-        this.screen = "online-lobby";
-        this.roomCodeInput = "";
-        this.lobbyStatus = "";
+        this.onlineFlow = true;
+        this.screen = "mod-select";
       }
     } else if (this.screen === "mod-select") {
       const hit = this.hitTestLocal(mx, my);
@@ -242,8 +251,19 @@ export class Game {
       if (hit.startsWith("mod-ship-")) this.selectedShipMod = parseInt(hit.split("-")[2]);
       if (hit.startsWith("mod-passive-")) this.selectedPassiveMod = parseInt(hit.split("-")[2]);
       if (hit.startsWith("control-mode-")) this.selectedControlMode = parseInt(hit.split("-")[2]);
-      if (hit === "button-start") this.screen = "settings";
-      if (hit === "button-back") this.screen = "menu";
+      if (hit === "button-start") {
+        if (this.onlineFlow) {
+          this.screen = "online-lobby";
+          this.roomCodeInput = "";
+          this.lobbyStatus = "";
+        } else {
+          this.screen = "settings";
+        }
+      }
+      if (hit === "button-back") {
+        this.onlineFlow = false;
+        this.screen = "menu";
+      }
     } else if (this.screen === "settings") {
       const hit = this.hitTestLocal(mx, my);
       if (!hit) return;
@@ -262,7 +282,7 @@ export class Game {
         }
         this.connection.disconnect();
         this.isOnline = false;
-        this.screen = "menu";
+        this.screen = "mod-select";
       }
     }
   }
@@ -343,6 +363,7 @@ export class Game {
       this.connectionCheckInterval = null;
     }
 
+    this.activeRoomCode = roomId.toUpperCase();
     this.lobbyStatus = `Joining room ${roomId}...`;
     this.connection.connect(roomId);
     this.isOnline = true;
@@ -378,7 +399,7 @@ export class Game {
     if (this.isOnline) {
       const input = this.input.getInput();
       this.connection.send({ type: "input", input });
-      this.renderer.render(this.gameState, this.localPlayerId, dt);
+      this.renderer.render(this.gameState, this.localPlayerId, dt, this.activeRoomCode);
       return;
     }
 
@@ -693,11 +714,22 @@ export class Game {
     ctx.fillStyle = COLORS.uiDim;
     ctx.fillText("ENTER zum Beitreten", w / 2, 298);
 
+    // Active room code display (big, easy to share)
+    if (this.activeRoomCode) {
+      ctx.font = "14px monospace";
+      ctx.fillStyle = COLORS.uiDim;
+      ctx.fillText("Code zum Teilen:", w / 2, 330);
+
+      ctx.font = "bold 32px monospace";
+      ctx.fillStyle = "#ffaa00";
+      ctx.fillText(this.activeRoomCode, w / 2, 368);
+    }
+
     // Status
     if (this.lobbyStatus) {
       ctx.font = "16px monospace";
       ctx.fillStyle = COLORS.gravityWell;
-      ctx.fillText(this.lobbyStatus, w / 2, 360);
+      ctx.fillText(this.lobbyStatus, w / 2, 420);
     }
 
     // Back button
