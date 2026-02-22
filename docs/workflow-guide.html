@@ -275,7 +275,7 @@
 <ol class="setup-steps">
   <li>
     <strong><code>/init-project</code></strong> — Tippe das in eine neue Claude Code Session im Projektverzeichnis.
-    <span class="note">Erkennt Tech-Stack und erstellt: Hooks, Subagents, CI, MCP-Config, Gitignore, PR-Template, CLAUDE.md-Regeln.</span>
+    <span class="note">Erkennt Tech-Stack (inkl. Port-Scan), erstellt: Hooks (Syntax + .env + Commit-Warnung), Subagents, CI (Unit + E2E), MCP-Config, Gitignore, PR-Template, AGENTS.md, CLAUDE.md-Regeln.</span>
   </li>
   <li>
     <strong>Code schreiben</strong> — Entwickle das Projekt bis es eine echte Architektur hat.
@@ -283,7 +283,7 @@
   </li>
   <li>
     <strong><code>/adapt-project</code></strong> — Tippe das wenn echte Source-Files und Tests existieren.
-    <span class="note">Scannt Architektur und aktualisiert: Test-Coverage-Tabellen, Hook-Pfade, Subagent-Scopes, CLAUDE.md.</span>
+    <span class="note">Scannt Architektur und aktualisiert: Test-Coverage-Tabellen, Hook-Pfade, Subagent-Scopes, CLAUDE.md, AGENTS.md.</span>
   </li>
 </ol>
 
@@ -431,7 +431,8 @@
   <div class="card">
     <h4>Bei jedem Commit</h4>
     <ul>
-      <li>Source-Files ohne Tests? → Warnung</li>
+      <li>Logic-Files ohne Tests? → Warnung (domain-aware: Engine/Store vs. Frontend)</li>
+      <li>Frontend-Aenderungen? → E2E-Reminder</li>
       <li>Keine .md-Datei im Commit? → Warnung</li>
       <li>Checklist-Reminder: Tests + E2E + Docs</li>
     </ul>
@@ -475,12 +476,12 @@
     <tr>
       <td><code>/init-project</code></td>
       <td>Neues Projekt, einmalig</td>
-      <td>Tech-Stack erkennen, Hooks + CI + Subagents + MCP + CLAUDE.md erstellen</td>
+      <td>Tech-Stack + Port-Scan, Hooks (Syntax, .env, Commit-Warnung), CI (Unit + E2E), Subagents, MCP, PR-Template, AGENTS.md, CLAUDE.md</td>
     </tr>
     <tr>
       <td><code>/adapt-project</code></td>
       <td>Code existiert, einmalig</td>
-      <td>Architektur scannen, Test-Coverage-Tabellen, Hook-Pfade, Subagent-Scopes updaten</td>
+      <td>Architektur scannen, Test-Coverage-Tabellen, Hook-Pfade, Subagent-Scopes, CLAUDE.md + AGENTS.md updaten</td>
     </tr>
     <tr>
       <td><code>/visual-testing</code></td>
