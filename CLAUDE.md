@@ -190,6 +190,22 @@ This project uses the following automated workflow. Do NOT skip steps.
 
 Workflow guide: `docs/workflow-guide.html`
 
+## Documentation Maintenance
+
+**Before EVERY commit, check and update as needed. Not as a batch at the end, but per commit.**
+
+| File | Update when ... |
+|------|----------------|
+| `README.md` | Project structure, features, setup, or usage changes |
+| `CLAUDE.md` | Workflows, conventions, or rules change |
+| `AGENTS.md` | Workflows, conventions, or rules change (keep in sync with CLAUDE.md) |
+
+Inconsistent documentation = quality defect equivalent to a failing test.
+
+### MCP Server: context7
+
+Configured in `.mcp.json` (repo root). Provides live documentation at session start.
+
 ## Claude Code Automations
 
 ### Hooks (`.claude/settings.json`)
