@@ -12,17 +12,40 @@ interface Camera {
   zoom: number;
 }
 
+export interface ClickableRegion {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  id: string;
+}
+
 export class Renderer {
   private ctx: CanvasRenderingContext2D;
   private camera: Camera = { x: 0, y: 0, zoom: 1 };
   private starField: Vec2[] = [];
   private time = 0;
+  private clickRegions: ClickableRegion[] = [];
 
   constructor(private canvas: HTMLCanvasElement) {
     const ctx = canvas.getContext("2d");
     if (!ctx) throw new Error("Failed to get 2D context");
     this.ctx = ctx;
     this.generateStarField();
+  }
+
+  hitTest(mx: number, my: number): string | null {
+    for (const region of this.clickRegions) {
+      if (mx >= region.x && mx <= region.x + region.width &&
+          my >= region.y && my <= region.y + region.height) {
+        return region.id;
+      }
+    }
+    return null;
+  }
+
+  getClickRegions(): ClickableRegion[] {
+    return this.clickRegions;
   }
 
   private generateStarField(): void {
@@ -646,10 +669,11 @@ export class Renderer {
     ctx.fillText("Press ENTER to return to menu", w / 2, h / 2 + 40 + players.length * 24 + 30);
   }
 
-  drawMenu(selectedShip: number, selectedMap: number, selectedMode: number): void {
+  drawMenu(selectedShip: number, selectedMap: number, selectedMode: number, hoveredId: string | null): void {
     const ctx = this.ctx;
     const w = this.canvas.width = window.innerWidth;
     const h = this.canvas.height = window.innerHeight;
+    this.clickRegions = [];
 
     ctx.fillStyle = COLORS.background;
     ctx.fillRect(0, 0, w, h);
@@ -680,102 +704,120 @@ export class Renderer {
     const ships: Array<keyof typeof SHIP_CONFIGS> = ["viper", "titan", "specter", "nova"];
     ctx.font = "bold 18px monospace";
     ctx.fillStyle = COLORS.ui;
-    ctx.fillText("SELECT SHIP [1-4]", w / 2, 180);
+    ctx.fillText("SELECT SHIP", w / 2, 180);
 
     for (let i = 0; i < ships.length; i++) {
       const ship = ships[i];
       const config = SHIP_CONFIGS[ship];
-      const x = w / 2 - 250 + i * 165;
-      const y = 220;
+      const bx = w / 2 - 250 + i * 165 - 50;
+      const by = 220 - 10;
+      const bw = 130;
+      const bh = 100;
       const isSelected = i === selectedShip;
+      const isHovered = hoveredId === `ship-${i}`;
 
-      // Selection box
-      ctx.strokeStyle = isSelected ? config.color : COLORS.uiDim;
+      ctx.strokeStyle = isSelected ? config.color : (isHovered ? COLORS.ui : COLORS.uiDim);
       ctx.lineWidth = isSelected ? 2 : 1;
-      ctx.strokeRect(x - 50, y - 10, 130, 100);
+      ctx.strokeRect(bx, by, bw, bh);
 
       if (isSelected) {
         ctx.fillStyle = config.color + "15";
-        ctx.fillRect(x - 50, y - 10, 130, 100);
+        ctx.fillRect(bx, by, bw, bh);
+      } else if (isHovered) {
+        ctx.fillStyle = COLORS.ui + "08";
+        ctx.fillRect(bx, by, bw, bh);
       }
 
-      // Ship name
       ctx.font = "bold 14px monospace";
-      ctx.fillStyle = isSelected ? config.color : COLORS.uiDim;
-      ctx.fillText(config.name, x + 15, y + 10);
+      ctx.fillStyle = isSelected ? config.color : (isHovered ? COLORS.ui : COLORS.uiDim);
+      ctx.fillText(config.name, bx + bw / 2, by + 20);
 
-      // Stats
       ctx.font = "10px monospace";
       ctx.fillStyle = COLORS.uiDim;
-      ctx.fillText(`HP: ${config.maxHp}`, x + 15, y + 30);
-      ctx.fillText(`SPD: ${config.speed}`, x + 15, y + 44);
-      ctx.fillText(`WPN: ${config.weaponType}`, x + 15, y + 58);
-      ctx.fillText(`SPC: ${config.specialType}`, x + 15, y + 72);
+      ctx.fillText(`HP: ${config.maxHp}`, bx + bw / 2, by + 40);
+      ctx.fillText(`SPD: ${config.speed}`, bx + bw / 2, by + 54);
+      ctx.fillText(`WPN: ${config.weaponType}`, bx + bw / 2, by + 68);
+      ctx.fillText(`SPC: ${config.specialType}`, bx + bw / 2, by + 82);
+
+      this.clickRegions.push({ x: bx, y: by, width: bw, height: bh, id: `ship-${i}` });
     }
 
     // Map selection
-    const maps = ["nebula-station", "asteroid-belt", "the-singularity"] as const;
     const mapNames = ["Nebula Station", "Asteroid Belt", "The Singularity"];
     ctx.font = "bold 18px monospace";
     ctx.fillStyle = COLORS.ui;
-    ctx.fillText("SELECT MAP [Q/E]", w / 2, 360);
+    ctx.fillText("SELECT MAP", w / 2, 360);
 
-    for (let i = 0; i < maps.length; i++) {
-      const x = w / 2 - 200 + i * 180;
-      const y = 390;
+    for (let i = 0; i < mapNames.length; i++) {
+      const bx = w / 2 - 200 + i * 180 - 60;
+      const by = 390 - 10;
+      const bw = 160;
+      const bh = 40;
       const isSelected = i === selectedMap;
+      const isHovered = hoveredId === `map-${i}`;
 
-      ctx.strokeStyle = isSelected ? COLORS.gravityWell : COLORS.uiDim;
+      ctx.strokeStyle = isSelected ? COLORS.gravityWell : (isHovered ? COLORS.ui : COLORS.uiDim);
       ctx.lineWidth = isSelected ? 2 : 1;
-      ctx.strokeRect(x - 60, y - 10, 160, 40);
+      ctx.strokeRect(bx, by, bw, bh);
 
       if (isSelected) {
         ctx.fillStyle = COLORS.gravityWell + "15";
-        ctx.fillRect(x - 60, y - 10, 160, 40);
+        ctx.fillRect(bx, by, bw, bh);
+      } else if (isHovered) {
+        ctx.fillStyle = COLORS.ui + "08";
+        ctx.fillRect(bx, by, bw, bh);
       }
 
       ctx.font = "12px monospace";
-      ctx.fillStyle = isSelected ? COLORS.ui : COLORS.uiDim;
-      ctx.fillText(mapNames[i], x + 20, y + 15);
+      ctx.fillStyle = isSelected ? COLORS.ui : (isHovered ? COLORS.ui : COLORS.uiDim);
+      ctx.fillText(mapNames[i], bx + bw / 2, by + 25);
+
+      this.clickRegions.push({ x: bx, y: by, width: bw, height: bh, id: `map-${i}` });
     }
 
     // Mode selection
-    const modes = ["deathmatch", "king-of-the-asteroid", "gravity-shift", "duel"] as const;
     const modeNames = ["Deathmatch", "King of Asteroid", "Gravity Shift", "Duel"];
     ctx.font = "bold 18px monospace";
     ctx.fillStyle = COLORS.ui;
-    ctx.fillText("SELECT MODE [Z/C]", w / 2, 470);
+    ctx.fillText("SELECT MODE", w / 2, 470);
 
-    for (let i = 0; i < modes.length; i++) {
-      const x = w / 2 - 290 + i * 160;
-      const y = 500;
+    for (let i = 0; i < modeNames.length; i++) {
+      const bx = w / 2 - 290 + i * 160 - 50;
+      const by = 500 - 10;
+      const bw = 140;
+      const bh = 40;
       const isSelected = i === selectedMode;
+      const isHovered = hoveredId === `mode-${i}`;
 
-      ctx.strokeStyle = isSelected ? COLORS.nova : COLORS.uiDim;
+      ctx.strokeStyle = isSelected ? COLORS.nova : (isHovered ? COLORS.ui : COLORS.uiDim);
       ctx.lineWidth = isSelected ? 2 : 1;
-      ctx.strokeRect(x - 50, y - 10, 140, 40);
+      ctx.strokeRect(bx, by, bw, bh);
 
       if (isSelected) {
         ctx.fillStyle = COLORS.nova + "15";
-        ctx.fillRect(x - 50, y - 10, 140, 40);
+        ctx.fillRect(bx, by, bw, bh);
+      } else if (isHovered) {
+        ctx.fillStyle = COLORS.ui + "08";
+        ctx.fillRect(bx, by, bw, bh);
       }
 
       ctx.font = "12px monospace";
-      ctx.fillStyle = isSelected ? COLORS.ui : COLORS.uiDim;
-      ctx.fillText(modeNames[i], x + 20, y + 15);
+      ctx.fillStyle = isSelected ? COLORS.ui : (isHovered ? COLORS.ui : COLORS.uiDim);
+      ctx.fillText(modeNames[i], bx + bw / 2, by + 25);
+
+      this.clickRegions.push({ x: bx, y: by, width: bw, height: bh, id: `mode-${i}` });
     }
 
-    // Start instruction
-    ctx.font = "bold 20px monospace";
-    ctx.fillStyle = COLORS.ui;
-    const flash = Math.sin(this.time * 3) > 0;
-    if (flash) {
-      ctx.fillText("PRESS ENTER TO START", w / 2, 590);
-    }
+    // "Weiter" button
+    this.drawButton(ctx, w / 2, 580, 200, 44, "Weiter", COLORS.ui, "button-weiter", hoveredId);
+
+    // "Multiplayer" button
+    this.drawButton(ctx, w / 2, 638, 200, 36, "Multiplayer", COLORS.uiDim, "button-online", hoveredId);
 
     // Controls
     ctx.font = "12px monospace";
     ctx.fillStyle = COLORS.uiDim;
+    ctx.textAlign = "center";
     const controls = [
       "WASD = Move  |  Mouse = Aim  |  Left Click = Shoot",
       "Right Click / Space = Special  |  Shift = Boost",
@@ -783,5 +825,31 @@ export class Renderer {
     for (let i = 0; i < controls.length; i++) {
       ctx.fillText(controls[i], w / 2, h - 50 + i * 18);
     }
+  }
+
+  private drawButton(
+    ctx: CanvasRenderingContext2D,
+    cx: number, cy: number, bw: number, bh: number,
+    label: string, color: string, id: string, hoveredId: string | null,
+  ): void {
+    const bx = cx - bw / 2;
+    const by = cy - bh / 2;
+    const isHovered = hoveredId === id;
+
+    ctx.strokeStyle = isHovered ? COLORS.ui : color;
+    ctx.lineWidth = isHovered ? 2 : 1;
+    ctx.strokeRect(bx, by, bw, bh);
+
+    if (isHovered) {
+      ctx.fillStyle = COLORS.ui + "12";
+      ctx.fillRect(bx, by, bw, bh);
+    }
+
+    ctx.font = `bold ${bh > 40 ? 20 : 16}px monospace`;
+    ctx.textAlign = "center";
+    ctx.fillStyle = isHovered ? COLORS.ui : color;
+    ctx.fillText(label, cx, cy + (bh > 40 ? 7 : 5));
+
+    this.clickRegions.push({ x: bx, y: by, width: bw, height: bh, id });
   }
 }

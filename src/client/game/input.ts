@@ -10,6 +10,7 @@ export class InputHandler {
 
   // Menu callbacks
   onKeyPress: ((key: string) => void) | null = null;
+  onMouseClick: ((x: number, y: number) => void) | null = null;
 
   constructor(canvas: HTMLCanvasElement) {
     window.addEventListener("keydown", (e) => {
@@ -28,7 +29,10 @@ export class InputHandler {
     });
 
     canvas.addEventListener("mousedown", (e) => {
-      if (e.button === 0) this.mouseDown = true;
+      if (e.button === 0) {
+        this.mouseDown = true;
+        if (this.onMouseClick) this.onMouseClick(e.clientX, e.clientY);
+      }
       if (e.button === 2) this.rightMouseDown = true;
     });
 
@@ -62,4 +66,7 @@ export class InputHandler {
   isKeyDown(key: string): boolean {
     return this.keys.has(key);
   }
+
+  getMouseX(): number { return this.mouseX; }
+  getMouseY(): number { return this.mouseY; }
 }

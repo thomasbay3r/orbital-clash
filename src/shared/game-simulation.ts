@@ -1,6 +1,6 @@
 import {
   GameState, PlayerState, PlayerInput, Projectile, GravityWell,
-  Particle, ShipClass, ModLoadout, GameMode, MapId, Vec2, KothZone,
+  Particle, ShipClass, ModLoadout, GameMode, MapId, Vec2, KothZone, ControlMode,
 } from "./types";
 import {
   SHIP_CONFIGS, WEAPON_CONFIGS, SPECIAL_CONFIGS,
@@ -75,6 +75,7 @@ export function addPlayer(
   name: string,
   shipClass: ShipClass,
   mods: ModLoadout,
+  controlMode: ControlMode = "absolute",
 ): void {
   const config = SHIP_CONFIGS[shipClass];
   const map = MAPS[state.mapId];
@@ -114,6 +115,7 @@ export function addPlayer(
     phaseActive: false,
     shieldActive: false,
     shieldHp: 0,
+    controlMode,
   };
   state.kothScores[id] = 0;
 }
@@ -256,22 +258,42 @@ function updatePlayer(
     const weaponConfig = WEAPON_CONFIGS[config.weaponType];
     const specialConfig = SPECIAL_CONFIGS[config.specialType];
 
-    // Rotation toward aim
+    // Rotation toward aim (both modes auto-rotate toward mouse)
     const targetRotation = input.aimAngle;
     const rotDiff = angleDiff(player.rotation, targetRotation);
     const maxRot = config.rotationSpeed * dt;
     player.rotation += clamp(rotDiff, -maxRot, maxRot);
 
-    // Movement
-    let thrustX = 0;
-    let thrustY = 0;
-    if (input.up) thrustY -= 1;
-    if (input.down) thrustY += 1;
-    if (input.left) thrustX -= 1;
-    if (input.right) thrustX += 1;
+    // Movement - compute thrust direction based on control mode
+    let thrustDir: Vec2 | null = null;
 
-    if (thrustX !== 0 || thrustY !== 0) {
-      const thrustDir = normalize({ x: thrustX, y: thrustY });
+    if (player.controlMode === "ship-relative") {
+      // Ship-relative: W/S = forward/back, A/D = strafe left/right
+      const forward = vecFromAngle(player.rotation);
+      const right = vecFromAngle(player.rotation + Math.PI / 2);
+      let fx = 0;
+      let fy = 0;
+      if (input.up) { fx += forward.x; fy += forward.y; }
+      if (input.down) { fx -= forward.x * 0.5; fy -= forward.y * 0.5; }
+      if (input.left) { fx -= right.x; fy -= right.y; }
+      if (input.right) { fx += right.x; fy += right.y; }
+      if (fx !== 0 || fy !== 0) {
+        thrustDir = normalize({ x: fx, y: fy });
+      }
+    } else {
+      // Absolute: W=up, S=down, A=left, D=right (screen directions)
+      let thrustX = 0;
+      let thrustY = 0;
+      if (input.up) thrustY -= 1;
+      if (input.down) thrustY += 1;
+      if (input.left) thrustX -= 1;
+      if (input.right) thrustX += 1;
+      if (thrustX !== 0 || thrustY !== 0) {
+        thrustDir = normalize({ x: thrustX, y: thrustY });
+      }
+    }
+
+    if (thrustDir) {
       let speed = config.speed;
       if (player.mods.ship === "drift-master") speed *= 1.1;
 

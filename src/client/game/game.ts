@@ -1,11 +1,11 @@
-import { Renderer } from "../rendering/renderer";
+import { Renderer, ClickableRegion } from "../rendering/renderer";
 import { InputHandler } from "./input";
 import { AudioManager } from "../audio/audio-manager";
 import { Bot } from "./bot";
 import { Connection } from "../network/connection";
 import {
   GameState, ShipClass, GameMode, MapId, ModLoadout,
-  PlayerInput, ServerMessage,
+  PlayerInput, ServerMessage, ControlMode,
 } from "../../shared/types";
 import {
   createGameState, addPlayer, simulateTick,
@@ -17,6 +17,9 @@ type Screen = "menu" | "mod-select" | "playing" | "online-lobby";
 const SHIP_OPTIONS: ShipClass[] = ["viper", "titan", "specter", "nova"];
 const MAP_OPTIONS: MapId[] = ["nebula-station", "asteroid-belt", "the-singularity"];
 const MODE_OPTIONS: GameMode[] = ["deathmatch", "king-of-the-asteroid", "gravity-shift", "duel"];
+const CONTROL_MODE_OPTIONS: ControlMode[] = ["absolute", "ship-relative"];
+const CONTROL_MODE_NAMES = ["Standard (WASD)", "Schiff-Relativ"];
+const CONTROL_MODE_DESCS = ["WASD = Richtung, Maus = Zielen", "W/S = Vor/Zurueck, A/D = Strafen"];
 const BOT_NAMES = ["Orion", "Nebula", "Comet", "Pulsar", "Quasar", "Nova", "Zenith", "Eclipse"];
 
 export class Game {
@@ -39,6 +42,10 @@ export class Game {
   private selectedWeaponMod = 0;
   private selectedShipMod = 0;
   private selectedPassiveMod = 0;
+  private selectedControlMode = 0;
+
+  // Click regions for mod-select / online-lobby
+  private menuClickRegions: ClickableRegion[] = [];
 
   // Game state
   private gameState: GameState | null = null;
@@ -64,6 +71,7 @@ export class Game {
     this.connection = new Connection();
 
     this.input.onKeyPress = (key) => this.handleKeyPress(key);
+    this.input.onMouseClick = (mx, my) => this.handleMenuClick(mx, my);
 
     this.connection.onMessage((msg: ServerMessage) => {
       this.handleServerMessage(msg);
@@ -82,10 +90,15 @@ export class Game {
     const dt = Math.min((time - this.lastTime) / 1000, 0.05);
     this.lastTime = time;
 
+    const mx = this.input.getMouseX();
+    const my = this.input.getMouseY();
+
     switch (this.screen) {
-      case "menu":
-        this.renderer.drawMenu(this.selectedShip, this.selectedMap, this.selectedMode);
+      case "menu": {
+        const hovered = this.renderer.hitTest(mx, my);
+        this.renderer.drawMenu(this.selectedShip, this.selectedMap, this.selectedMode, hovered);
         break;
+      }
       case "mod-select":
         this.drawModSelect();
         break;
@@ -134,6 +147,9 @@ export class Game {
           this.selectedWeaponMod = idx;
         }
       }
+      if (key === "tab") {
+        this.selectedControlMode = (this.selectedControlMode + 1) % CONTROL_MODE_OPTIONS.length;
+      }
       if (key === "enter") {
         this.startLocalGame();
       }
@@ -174,6 +190,59 @@ export class Game {
     }
   }
 
+  private handleMenuClick(mx: number, my: number): void {
+    if (!this.audioInitialized) {
+      this.audio.init();
+      this.audioInitialized = true;
+    }
+
+    if (this.screen === "menu") {
+      const hit = this.renderer.hitTest(mx, my);
+      if (!hit) return;
+      if (hit.startsWith("ship-")) this.selectedShip = parseInt(hit.split("-")[1]);
+      if (hit.startsWith("map-")) this.selectedMap = parseInt(hit.split("-")[1]);
+      if (hit.startsWith("mode-")) this.selectedMode = parseInt(hit.split("-")[1]);
+      if (hit === "button-weiter") this.screen = "mod-select";
+      if (hit === "button-online") {
+        this.screen = "online-lobby";
+        this.roomCodeInput = "";
+        this.lobbyStatus = "";
+      }
+    } else if (this.screen === "mod-select") {
+      const hit = this.hitTestLocal(mx, my);
+      if (!hit) return;
+      if (hit.startsWith("mod-weapon-")) this.selectedWeaponMod = parseInt(hit.split("-")[2]);
+      if (hit.startsWith("mod-ship-")) this.selectedShipMod = parseInt(hit.split("-")[2]);
+      if (hit.startsWith("mod-passive-")) this.selectedPassiveMod = parseInt(hit.split("-")[2]);
+      if (hit.startsWith("control-mode-")) this.selectedControlMode = parseInt(hit.split("-")[2]);
+      if (hit === "button-start") this.startLocalGame();
+      if (hit === "button-back") this.screen = "menu";
+    } else if (this.screen === "online-lobby") {
+      const hit = this.hitTestLocal(mx, my);
+      if (!hit) return;
+      if (hit === "button-new-room") this.createAndJoinRoom();
+      if (hit === "button-lobby-back") {
+        if (this.connectionCheckInterval) {
+          clearInterval(this.connectionCheckInterval);
+          this.connectionCheckInterval = null;
+        }
+        this.connection.disconnect();
+        this.isOnline = false;
+        this.screen = "menu";
+      }
+    }
+  }
+
+  private hitTestLocal(mx: number, my: number): string | null {
+    for (const region of this.menuClickRegions) {
+      if (mx >= region.x && mx <= region.x + region.width &&
+          my >= region.y && my <= region.y + region.height) {
+        return region.id;
+      }
+    }
+    return null;
+  }
+
   private getMods(): ModLoadout {
     const weaponMods: Array<ModLoadout["weapon"]> = ["piercing", "ricochet", "gravity-sync", "rapid-fire"];
     const shipMods: Array<ModLoadout["ship"]> = ["afterburner", "hull-plating", "drift-master", "gravity-anchor"];
@@ -193,8 +262,9 @@ export class Game {
     const shipClass = SHIP_OPTIONS[this.selectedShip];
     const mods = this.getMods();
 
+    const controlMode = CONTROL_MODE_OPTIONS[this.selectedControlMode];
     this.gameState = createGameState(mode, mapId);
-    addPlayer(this.gameState, this.localPlayerId, this.playerName, shipClass, mods);
+    addPlayer(this.gameState, this.localPlayerId, this.playerName, shipClass, mods, controlMode);
 
     const botCount = mode === "duel" ? 1 : 3;
     this.bots = [];
@@ -248,7 +318,8 @@ export class Game {
         this.connectionCheckInterval = null;
         const ship = SHIP_OPTIONS[this.selectedShip];
         const mods = this.getMods();
-        this.connection.send({ type: "join", name: this.playerName, shipClass: ship, mods });
+        const controlMode = CONTROL_MODE_OPTIONS[this.selectedControlMode];
+        this.connection.send({ type: "join", name: this.playerName, shipClass: ship, mods, controlMode });
         this.lobbyStatus = `Connected to room ${roomId}. Waiting for players...`;
       }
     }, 100);
@@ -350,6 +421,10 @@ export class Game {
     const ctx = this.canvas.getContext("2d")!;
     const w = this.canvas.width = window.innerWidth;
     const h = this.canvas.height = window.innerHeight;
+    this.menuClickRegions = [];
+
+    const mx = this.input.getMouseX();
+    const my = this.input.getMouseY();
 
     ctx.fillStyle = COLORS.background;
     ctx.fillRect(0, 0, w, h);
@@ -384,14 +459,51 @@ export class Game {
       "See off-screen enemies",
     ];
 
-    this.drawModCategory(ctx, w / 2, 120, "WEAPON MOD [1-4]", weaponMods, weaponDescs, this.selectedWeaponMod, "#ff4444");
-    this.drawModCategory(ctx, w / 2, 280, "SHIP MOD [CTRL+1-4]", shipMods, shipDescs, this.selectedShipMod, "#4488ff");
-    this.drawModCategory(ctx, w / 2, 440, "PASSIVE MOD [SHIFT+1-4]", passiveMods, passiveDescs, this.selectedPassiveMod, "#44ff88");
+    this.drawModCategory(ctx, w / 2, 120, "WEAPON MOD", weaponMods, weaponDescs, this.selectedWeaponMod, "#ff4444", "weapon", mx, my);
+    this.drawModCategory(ctx, w / 2, 260, "SHIP MOD", shipMods, shipDescs, this.selectedShipMod, "#4488ff", "ship", mx, my);
+    this.drawModCategory(ctx, w / 2, 400, "PASSIVE MOD", passiveMods, passiveDescs, this.selectedPassiveMod, "#44ff88", "passive", mx, my);
 
-    ctx.font = "bold 18px monospace";
-    ctx.fillStyle = COLORS.ui;
-    const flash = Math.sin(performance.now() / 300) > 0;
-    if (flash) ctx.fillText("PRESS ENTER TO START  |  ESC TO BACK", w / 2, h - 40);
+    // Control mode selector
+    ctx.font = "bold 16px monospace";
+    ctx.fillStyle = "#ffaa00";
+    ctx.textAlign = "center";
+    ctx.fillText("STEUERUNG", w / 2, 545);
+
+    for (let i = 0; i < 2; i++) {
+      const bx = w / 2 - 230 + i * 240;
+      const by = 560;
+      const bw = 210;
+      const bh = 50;
+      const isSelected = i === this.selectedControlMode;
+      const regionId = `control-mode-${i}`;
+      const isHovered = this.hitTestLocal(mx, my) === regionId;
+
+      ctx.strokeStyle = isSelected ? "#ffaa00" : (isHovered ? COLORS.ui : COLORS.uiDim);
+      ctx.lineWidth = isSelected ? 2 : 1;
+      ctx.strokeRect(bx, by, bw, bh);
+
+      if (isSelected) {
+        ctx.fillStyle = "#ffaa0015";
+        ctx.fillRect(bx, by, bw, bh);
+      } else if (isHovered) {
+        ctx.fillStyle = COLORS.ui + "08";
+        ctx.fillRect(bx, by, bw, bh);
+      }
+
+      ctx.font = "bold 12px monospace";
+      ctx.fillStyle = isSelected ? COLORS.ui : (isHovered ? COLORS.ui : COLORS.uiDim);
+      ctx.fillText(CONTROL_MODE_NAMES[i], bx + bw / 2, by + 20);
+
+      ctx.font = "9px monospace";
+      ctx.fillStyle = COLORS.uiDim;
+      ctx.fillText(CONTROL_MODE_DESCS[i], bx + bw / 2, by + 38);
+
+      this.menuClickRegions.push({ x: bx, y: by, width: bw, height: bh, id: regionId });
+    }
+
+    // Buttons
+    this.drawMenuButton(ctx, w / 2, 645, 220, 44, "Spiel starten", COLORS.ui, "button-start", mx, my);
+    this.drawMenuButton(ctx, w / 2, 700, 150, 36, "Zurueck", COLORS.uiDim, "button-back", mx, my);
   }
 
   // ===== Online Lobby Screen =====
@@ -400,6 +512,10 @@ export class Game {
     const ctx = this.canvas.getContext("2d")!;
     const w = this.canvas.width = window.innerWidth;
     const h = this.canvas.height = window.innerHeight;
+    this.menuClickRegions = [];
+
+    const mx = this.input.getMouseX();
+    const my = this.input.getMouseY();
 
     ctx.fillStyle = COLORS.background;
     ctx.fillRect(0, 0, w, h);
@@ -410,38 +526,35 @@ export class Game {
     ctx.fillText("MULTIPLAYER LOBBY", w / 2, 80);
 
     // New room button
-    ctx.font = "bold 18px monospace";
-    ctx.fillStyle = COLORS.nova;
-    ctx.fillText("[N] Create New Room", w / 2, 150);
+    this.drawMenuButton(ctx, w / 2, 145, 240, 40, "Neuer Raum erstellen", COLORS.nova, "button-new-room", mx, my);
 
     // Room code input
     ctx.font = "16px monospace";
     ctx.fillStyle = COLORS.uiDim;
-    ctx.fillText("Or enter room code:", w / 2, 210);
+    ctx.textAlign = "center";
+    ctx.fillText("Oder Raum-Code eingeben:", w / 2, 220);
 
     ctx.strokeStyle = COLORS.ui;
     ctx.lineWidth = 2;
-    ctx.strokeRect(w / 2 - 80, 225, 160, 40);
+    ctx.strokeRect(w / 2 - 80, 235, 160, 40);
     ctx.font = "bold 24px monospace";
     ctx.fillStyle = COLORS.ui;
     const cursor = Math.sin(performance.now() / 300) > 0 ? "_" : "";
-    ctx.fillText(this.roomCodeInput + cursor, w / 2, 252);
+    ctx.fillText(this.roomCodeInput + cursor, w / 2, 262);
 
     ctx.font = "12px monospace";
     ctx.fillStyle = COLORS.uiDim;
-    ctx.fillText("Press ENTER to join", w / 2, 290);
+    ctx.fillText("ENTER zum Beitreten", w / 2, 298);
 
     // Status
     if (this.lobbyStatus) {
       ctx.font = "16px monospace";
       ctx.fillStyle = COLORS.gravityWell;
-      ctx.fillText(this.lobbyStatus, w / 2, 350);
+      ctx.fillText(this.lobbyStatus, w / 2, 360);
     }
 
-    // Back
-    ctx.font = "14px monospace";
-    ctx.fillStyle = COLORS.uiDim;
-    ctx.fillText("[ESC] Back to menu", w / 2, h - 40);
+    // Back button
+    this.drawMenuButton(ctx, w / 2, h - 50, 200, 36, "Zurueck", COLORS.uiDim, "button-lobby-back", mx, my);
   }
 
   private drawModCategory(
@@ -452,6 +565,8 @@ export class Game {
     descs: string[],
     selected: number,
     color: string,
+    categoryId: string,
+    mx: number, my: number,
   ): void {
     ctx.font = "bold 16px monospace";
     ctx.fillStyle = color;
@@ -459,26 +574,62 @@ export class Game {
     ctx.fillText(title, cx, y);
 
     for (let i = 0; i < names.length; i++) {
-      const x = cx - 250 + i * 160;
-      const boxY = y + 15;
+      const bx = cx - 250 + i * 160 - 50;
+      const by = y + 15;
+      const bw = 140;
+      const bh = 55;
       const isSelected = i === selected;
+      const regionId = `mod-${categoryId}-${i}`;
+      const isHovered = mx >= bx && mx <= bx + bw && my >= by && my <= by + bh;
 
-      ctx.strokeStyle = isSelected ? color : COLORS.uiDim;
+      ctx.strokeStyle = isSelected ? color : (isHovered ? COLORS.ui : COLORS.uiDim);
       ctx.lineWidth = isSelected ? 2 : 1;
-      ctx.strokeRect(x - 50, boxY, 140, 55);
+      ctx.strokeRect(bx, by, bw, bh);
 
       if (isSelected) {
         ctx.fillStyle = color + "15";
-        ctx.fillRect(x - 50, boxY, 140, 55);
+        ctx.fillRect(bx, by, bw, bh);
+      } else if (isHovered) {
+        ctx.fillStyle = COLORS.ui + "08";
+        ctx.fillRect(bx, by, bw, bh);
       }
 
       ctx.font = "bold 12px monospace";
-      ctx.fillStyle = isSelected ? COLORS.ui : COLORS.uiDim;
-      ctx.fillText(names[i], x + 20, boxY + 20);
+      ctx.fillStyle = isSelected ? COLORS.ui : (isHovered ? COLORS.ui : COLORS.uiDim);
+      ctx.fillText(names[i], bx + bw / 2, by + 20);
 
       ctx.font = "9px monospace";
       ctx.fillStyle = COLORS.uiDim;
-      ctx.fillText(descs[i], x + 20, boxY + 40);
+      ctx.fillText(descs[i], bx + bw / 2, by + 40);
+
+      this.menuClickRegions.push({ x: bx, y: by, width: bw, height: bh, id: regionId });
     }
+  }
+
+  private drawMenuButton(
+    ctx: CanvasRenderingContext2D,
+    cx: number, cy: number, bw: number, bh: number,
+    label: string, color: string, id: string,
+    mx: number, my: number,
+  ): void {
+    const bx = cx - bw / 2;
+    const by = cy - bh / 2;
+    const isHovered = mx >= bx && mx <= bx + bw && my >= by && my <= by + bh;
+
+    ctx.strokeStyle = isHovered ? COLORS.ui : color;
+    ctx.lineWidth = isHovered ? 2 : 1;
+    ctx.strokeRect(bx, by, bw, bh);
+
+    if (isHovered) {
+      ctx.fillStyle = COLORS.ui + "12";
+      ctx.fillRect(bx, by, bw, bh);
+    }
+
+    ctx.font = `bold ${bh > 40 ? 20 : 16}px monospace`;
+    ctx.textAlign = "center";
+    ctx.fillStyle = isHovered ? COLORS.ui : color;
+    ctx.fillText(label, cx, cy + (bh > 40 ? 7 : 5));
+
+    this.menuClickRegions.push({ x: bx, y: by, width: bw, height: bh, id });
   }
 }

@@ -1,6 +1,6 @@
 import {
   ClientMessage, ServerMessage, PlayerInput, ShipClass,
-  ModLoadout, GameMode, MapId, GameState,
+  ModLoadout, GameMode, MapId, GameState, ControlMode,
 } from "../shared/types";
 import { TICK_DURATION, SERVER_BROADCAST_RATE, TICK_RATE } from "../shared/constants";
 import {
@@ -86,7 +86,7 @@ export class GameRoom implements DurableObject {
 
     switch (data.type) {
       case "join":
-        this.handleJoin(ws, data.name, data.shipClass, data.mods);
+        this.handleJoin(ws, data.name, data.shipClass, data.mods, data.controlMode);
         break;
       case "input":
         this.handleInput(ws, data.input);
@@ -110,6 +110,7 @@ export class GameRoom implements DurableObject {
     name: string,
     shipClass: ShipClass,
     mods: ModLoadout,
+    controlMode?: ControlMode,
   ): void {
     // Create game state on first join
     if (!this.gameState) {
@@ -118,7 +119,7 @@ export class GameRoom implements DurableObject {
 
     const playerId = crypto.randomUUID().slice(0, 8);
     this.sessions.set(ws, { webSocket: ws, playerId, name, latestInput: null });
-    addPlayer(this.gameState, playerId, name, shipClass, mods);
+    addPlayer(this.gameState, playerId, name, shipClass, mods, controlMode ?? "absolute");
 
     const joinMsg: ServerMessage = { type: "joined", playerId };
     ws.send(JSON.stringify(joinMsg));

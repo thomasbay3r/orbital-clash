@@ -87,6 +87,7 @@ export interface PlayerState {
   // Shield bubble state
   shieldActive: boolean;
   shieldHp: number;
+  controlMode: ControlMode;
 }
 
 export interface Projectile {
@@ -166,6 +167,8 @@ export interface MapConfig {
 
 // ===== Game State =====
 
+export type ControlMode = "absolute" | "ship-relative";
+
 export type GameMode = "deathmatch" | "king-of-the-asteroid" | "gravity-shift" | "duel";
 
 export interface GameState {
@@ -202,7 +205,7 @@ export interface PlayerInput {
 // ===== Network Messages =====
 
 export type ClientMessage =
-  | { type: "join"; name: string; shipClass: ShipClass; mods: ModLoadout }
+  | { type: "join"; name: string; shipClass: ShipClass; mods: ModLoadout; controlMode?: ControlMode }
   | { type: "input"; input: PlayerInput }
   | { type: "leave" };
 
