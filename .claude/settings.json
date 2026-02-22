@@ -10,6 +10,35 @@
             "timeout": 180
           }
         ]
+      },
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "filepath=\"$CLAUDE_FILE_PATH\"; case \"$filepath\" in *.js) node --check \"$filepath\" 2>&1 || echo 'HOOK_FAILED: JavaScript syntax error detected' ;; esac"
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "filepath=\"$CLAUDE_FILE_PATH\"; case \"$filepath\" in *.env|*.env.*) echo 'BLOCKED: .env files are protected' >&2; exit 1 ;; */package-lock.json) echo 'BLOCKED: package-lock.json should only be modified by npm install' >&2; exit 1 ;; esac"
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "case \"$CLAUDE_BASH_COMMAND\" in *'git commit'*) staged=$(cd \"C:/Users/thoma/OneDrive/Dokumente/GitHub/orbital-clash\" && git diff --cached --name-only 2>/dev/null); has_src=false; has_test=false; has_e2e=false; has_md=false; for f in $staged; do case \"$f\" in src/client/*|src/server/*|src/shared/[!.]*.ts) has_src=true ;; src/shared/*.test.ts) has_test=true ;; e2e/*) has_e2e=true ;; *.md) has_md=true ;; esac; done; warnings=''; if [ \"$has_src\" = true ] && [ \"$has_test\" = false ]; then warnings=\"${warnings}WARNING: src/ files staged but no test files. Add tests for logic changes.\\n\"; fi; if [ \"$has_src\" = true ] && [ \"$has_e2e\" = false ]; then warnings=\"${warnings}REMINDER: Source files changed. Did you run npm run test:e2e? Consider if new E2E tests are needed.\\n\"; fi; if [ \"$has_md\" = false ]; then warnings=\"${warnings}WARNING: No .md files staged. Check if CLAUDE.md or README.md need updating.\\n\"; fi; warnings=\"${warnings}CHECKLIST: Ensure npx tsc --noEmit + npm test + npm run test:e2e all passed before this commit.\\n\"; if [ -n \"$warnings\" ]; then printf \"$warnings\"; fi ;; esac"
+          }
+        ]
       }
     ]
   }

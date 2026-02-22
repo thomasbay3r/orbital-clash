@@ -154,6 +154,25 @@ Three levels of visual testing, all via Playwright MCP:
 - Before PR: All critical issues from `/visual-testing` must be fixed
 - Screenshots are saved as PNGs in the working directory
 
+## Claude Code Automations
+
+### Hooks (`.claude/settings.json`)
+
+| Hook | Type | Effect |
+|------|------|--------|
+| Deploy after push | PostToolUse (Bash) | Auto-deploys to Cloudflare after `git push` |
+| JS Syntax-Check | PostToolUse (Edit/Write) | Runs `node --check` after JS file changes |
+| .env/Lock protection | PreToolUse (Edit/Write) | Blocks changes to `.env*` and `package-lock.json` |
+| Commit checklist | PreToolUse (Bash) | Warns if src/ files staged without tests, or no .md files in commit |
+
+### Subagents (`.claude/agents/`)
+
+| Agent | File | When to use |
+|-------|------|-------------|
+| Test Writer | `test-writer.md` | When adding/changing simulation, physics, or constants in `src/shared/` |
+
+Subagents are not auto-invoked. Call via Task tool when needed.
+
 ## Key Design Decisions
 - Server-authoritative: physics run on server, client sends inputs only
 - All graphics are programmatic (Canvas API) — no external image assets
