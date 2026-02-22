@@ -272,20 +272,55 @@
 <!-- ===== SETUP ===== -->
 <h2>Projekt-Setup (einmalig)</h2>
 
+<h3>Track A: Neues Projekt (Gruene Wiese)</h3>
 <ol class="setup-steps">
   <li>
-    <strong><code>/init-project</code></strong> — Tippe das in eine neue Claude Code Session im Projektverzeichnis.
-    <span class="note">Erkennt Tech-Stack (inkl. Port-Scan), erstellt: Hooks (Syntax + .env + Commit-Warnung), Subagents, CI (Unit + E2E), MCP-Config, Gitignore, PR-Template, AGENTS.md, CLAUDE.md-Regeln.</span>
+    <strong>Brainstorming</strong> — Beschreibe deine Idee in einer Claude Code Session (<code>mkdir projekt && cd projekt && git init</code> reicht als Start).
+    <span class="note">Brainstorming-Skill fragt Fragen, klaert Tech-Stack, schreibt Design-Doc. Am Ende weisst du welchen Stack du brauchst.</span>
   </li>
   <li>
-    <strong>Code schreiben</strong> — Entwickle das Projekt bis es eine echte Architektur hat.
-    <span class="note">Alle Skills (Brainstorming, TDD, Debugging) funktionieren ab sofort automatisch.</span>
+    <strong><code>/init-project &lt;stack&gt;</code></strong> — Scaffolding + Automation in einem Schritt.
+    <span class="note">Erstellt das Projekt (npm init, vite create, etc.) UND richtet alles ein: Hooks, Subagents, CI, MCP, Gitignore, PR-Template, AGENTS.md, CLAUDE.md.</span>
+  </li>
+  <li>
+    <strong>Code schreiben</strong> — Writing Plans erstellt den Implementierungsplan, dann TDD-Zyklus.
+    <span class="note">Alle Skills (TDD, Debugging, Code Review) und Hooks (Syntax, Commit-Warnung) sind ab sofort aktiv.</span>
   </li>
   <li>
     <strong><code>/adapt-project</code></strong> — Tippe das wenn echte Source-Files und Tests existieren.
     <span class="note">Scannt Architektur und aktualisiert: Test-Coverage-Tabellen, Hook-Pfade, Subagent-Scopes, CLAUDE.md, AGENTS.md.</span>
   </li>
 </ol>
+
+<h3>Track B: Bestehendes Projekt</h3>
+<ol class="setup-steps">
+  <li>
+    <strong><code>/init-project</code></strong> (ohne Argument) — Erkennt den vorhandenen Tech-Stack automatisch.
+    <span class="note">Scannt package.json, Config-Dateien, Lock-Files. Erstellt Hooks, Subagents, CI, MCP, Gitignore, PR-Template, AGENTS.md, CLAUDE.md.</span>
+  </li>
+  <li>
+    <strong><code>/adapt-project</code></strong> — Sofort danach ausfuehren (Code existiert ja bereits).
+    <span class="note">Scannt Architektur und aktualisiert: Test-Coverage-Tabellen, Hook-Pfade, Subagent-Scopes, CLAUDE.md, AGENTS.md.</span>
+  </li>
+</ol>
+
+<h3>Unterstuetzte Tech-Stacks fuer <code>/init-project &lt;stack&gt;</code></h3>
+<table class="cmd-table">
+  <thead>
+    <tr><th>Argument</th><th>Init-Befehl</th><th>Was entsteht</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><code>js</code></td><td><code>npm init -y</code></td><td>Vanilla JavaScript</td></tr>
+    <tr><td><code>ts</code></td><td><code>npm init -y</code> + tsconfig</td><td>Vanilla TypeScript</td></tr>
+    <tr><td><code>vite</code></td><td><code>npm create vite@latest</code></td><td>Vite + JS</td></tr>
+    <tr><td><code>vite-ts</code></td><td><code>npm create vite@latest</code></td><td>Vite + TypeScript</td></tr>
+    <tr><td><code>vite-react</code></td><td><code>npm create vite@latest</code></td><td>Vite + React</td></tr>
+    <tr><td><code>vite-react-ts</code></td><td><code>npm create vite@latest</code></td><td>Vite + React + TS</td></tr>
+    <tr><td><code>next</code></td><td><code>npx create-next-app@latest</code></td><td>Next.js (interaktiv)</td></tr>
+    <tr><td><code>cloudflare-worker</code></td><td><code>npm create cloudflare@latest</code></td><td>Cloudflare Worker (interaktiv)</td></tr>
+    <tr><td><code>bun</code></td><td><code>bun init</code></td><td>Bun Runtime</td></tr>
+  </tbody>
+</table>
 
 <!-- ===== WORKFLOW ===== -->
 <h2>Entwicklungs-Workflow (jedes Feature)</h2>
@@ -474,9 +509,9 @@
   </thead>
   <tbody>
     <tr>
-      <td><code>/init-project</code></td>
+      <td><code>/init-project [stack]</code></td>
       <td>Neues Projekt, einmalig</td>
-      <td>Tech-Stack + Port-Scan, Hooks (Syntax, .env, Commit-Warnung), CI (Unit + E2E), Subagents, MCP, PR-Template, AGENTS.md, CLAUDE.md</td>
+      <td>Mit Argument: Scaffolding + Automation. Ohne Argument: erkennt bestehenden Stack. Erstellt Hooks, CI, Subagents, MCP, PR-Template, AGENTS.md, CLAUDE.md</td>
     </tr>
     <tr>
       <td><code>/adapt-project</code></td>
