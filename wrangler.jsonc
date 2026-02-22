@@ -19,7 +19,7 @@
     {
       "binding": "DB",
       "database_name": "orbital-clash-db",
-      "database_id": ""
+      "database_id": "55ad0ff3-8f0a-4874-a8cb-c2a7c49f1395"
     }
   ],
 
@@ -27,7 +27,7 @@
   "migrations": [
     {
       "tag": "v1",
-      "new_classes": ["GameRoom"]
+      "new_sqlite_classes": ["GameRoom"]
     }
   ],
 
