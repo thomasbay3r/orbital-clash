@@ -292,8 +292,8 @@
     <span class="note">Alle Skills (TDD, Debugging, Code Review) und Hooks (Syntax, Commit-Warnung) sind ab sofort aktiv.</span>
   </li>
   <li>
-    <strong><code>/adapt-project</code></strong> — Tippe das wenn echte Source-Files und Tests existieren.
-    <span class="note">Scannt Architektur und aktualisiert: Test-Coverage-Tabellen, Hook-Pfade, Subagent-Scopes, CLAUDE.md, AGENTS.md.</span>
+    <strong><code>/adapt-project</code></strong> — Wird automatisch von finishing-a-development-branch aufgerufen.
+    <span class="note">Scannt Architektur und aktualisiert: Test-Coverage-Tabellen, Hook-Pfade, Subagent-Scopes, CLAUDE.md, AGENTS.md. Laeuft einmalig beim ersten Branch-Abschluss.</span>
   </li>
 </ol>
 
@@ -447,10 +447,10 @@
     <div class="phase">Ship</div>
     <div class="description">
       <strong>Finishing Branch</strong><br>
-      Verifies tests pass, praesentiert Optionen: Merge lokal, PR erstellen, Branch behalten, oder verwerfen.
+      Adapt Project Gate (einmalig) → Tests pruefen → Optionen: Merge lokal, PR erstellen, Branch behalten, oder verwerfen.
       <div class="skill-detail">
         <span class="skill-badge auto-badge">finishing-a-development-branch</span>
-        <span class="skill-how">AUTO — Triggert wenn Implementierung abgeschlossen und alle Tests gruen.</span>
+        <span class="skill-how">AUTO — Triggert wenn Implementierung abgeschlossen. Fuehrt einmalig <code>/adapt-project</code> aus (wenn Coverage-Tabelle noch leer).</span>
       </div>
     </div>
     <div class="trigger auto">AUTO — Skill</div>
@@ -520,7 +520,7 @@
     </tr>
     <tr>
       <td><code>/adapt-project</code></td>
-      <td>Code existiert, einmalig</td>
+      <td>Automatisch beim ersten Branch-Abschluss (oder manuell fuer bestehende Projekte)</td>
       <td>Architektur scannen, Test-Coverage-Tabellen, Hook-Pfade, Subagent-Scopes, CLAUDE.md + AGENTS.md updaten</td>
     </tr>
     <tr>
@@ -582,7 +582,7 @@
   </div>
   <div class="card">
     <h4>finishing-a-development-branch</h4>
-    <p>Branch-Abschluss: Merge lokal, PR erstellen, behalten, oder verwerfen.</p>
+    <p>Branch-Abschluss: Fuehrt einmalig <code>/adapt-project</code> aus (Gate), dann Merge lokal, PR erstellen, behalten, oder verwerfen.</p>
   </div>
   <div class="card">
     <h4>playwright-skill <span style="font-size:0.7rem;color:var(--text-dim);font-weight:400;">(Plugin: lackeyjb)</span></h4>
