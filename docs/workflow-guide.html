@@ -1,0 +1,442 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Claude Code — Development Workflow Guide</title>
+<style>
+  :root {
+    --bg: #0f1117;
+    --surface: #1a1d27;
+    --surface2: #242836;
+    --border: #2e3345;
+    --text: #e2e4ea;
+    --text-dim: #8b8fa3;
+    --accent: #7c6aef;
+    --accent-dim: #5b4cc4;
+    --green: #34d399;
+    --yellow: #fbbf24;
+    --red: #f87171;
+    --blue: #60a5fa;
+    --orange: #fb923c;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.6;
+    padding: 2rem;
+    max-width: 1100px;
+    margin: 0 auto;
+  }
+  h1 {
+    font-size: 1.8rem;
+    margin-bottom: 0.5rem;
+    background: linear-gradient(135deg, var(--accent), var(--blue));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+  .subtitle { color: var(--text-dim); margin-bottom: 2rem; font-size: 0.95rem; }
+  h2 {
+    font-size: 1.25rem;
+    margin: 2rem 0 1rem;
+    color: var(--accent);
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+  h3 { font-size: 1rem; margin: 1rem 0 0.5rem; color: var(--text); }
+
+  /* Flow Diagram */
+  .flow {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    margin: 1.5rem 0;
+  }
+  .flow-step {
+    display: grid;
+    grid-template-columns: 80px 1fr 200px;
+    gap: 1rem;
+    align-items: start;
+    padding: 1rem 1.25rem;
+    background: var(--surface);
+    border-left: 3px solid var(--border);
+    position: relative;
+  }
+  .flow-step:first-child { border-radius: 8px 8px 0 0; }
+  .flow-step:last-child { border-radius: 0 0 8px 8px; }
+  .flow-step.active { border-left-color: var(--accent); background: var(--surface2); }
+  .flow-step .phase {
+    font-size: 0.75rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-dim);
+    padding-top: 2px;
+  }
+  .flow-step .description { font-size: 0.9rem; }
+  .flow-step .trigger {
+    font-size: 0.8rem;
+    padding: 0.25rem 0.6rem;
+    border-radius: 4px;
+    text-align: center;
+    font-weight: 600;
+    white-space: nowrap;
+    align-self: center;
+  }
+  .trigger.auto { background: rgba(52, 211, 153, 0.15); color: var(--green); }
+  .trigger.manual { background: rgba(251, 191, 36, 0.15); color: var(--yellow); }
+  .trigger.rule { background: rgba(124, 106, 239, 0.15); color: var(--accent); }
+
+  .arrow {
+    text-align: center;
+    color: var(--text-dim);
+    font-size: 0.75rem;
+    padding: 0.15rem 0;
+    background: var(--surface);
+    border-left: 3px solid var(--border);
+  }
+  .arrow.active-border { border-left-color: var(--accent); background: var(--surface2); }
+
+  /* Cards */
+  .card-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 1rem;
+    margin: 1rem 0;
+  }
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 1.25rem;
+  }
+  .card h4 {
+    font-size: 0.95rem;
+    margin-bottom: 0.5rem;
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+  }
+  .card p, .card li { font-size: 0.85rem; color: var(--text-dim); }
+  .card ul { padding-left: 1.25rem; }
+  .card li { margin-bottom: 0.25rem; }
+
+  /* Command Reference */
+  .cmd-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 1rem 0;
+    font-size: 0.85rem;
+  }
+  .cmd-table th {
+    text-align: left;
+    padding: 0.6rem 0.8rem;
+    background: var(--surface2);
+    color: var(--text-dim);
+    font-weight: 600;
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+  .cmd-table td {
+    padding: 0.6rem 0.8rem;
+    border-top: 1px solid var(--border);
+  }
+  .cmd-table tr:hover td { background: var(--surface); }
+
+  code {
+    background: var(--surface2);
+    padding: 0.15rem 0.4rem;
+    border-radius: 3px;
+    font-size: 0.85em;
+    font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
+    color: var(--blue);
+  }
+
+  /* Setup Section */
+  .setup-steps {
+    counter-reset: setup;
+    list-style: none;
+    padding: 0;
+  }
+  .setup-steps li {
+    counter-increment: setup;
+    padding: 0.75rem 1rem 0.75rem 3rem;
+    background: var(--surface);
+    border-left: 3px solid var(--border);
+    margin-bottom: 2px;
+    position: relative;
+    font-size: 0.9rem;
+  }
+  .setup-steps li::before {
+    content: counter(setup);
+    position: absolute;
+    left: 0.75rem;
+    font-weight: 700;
+    color: var(--accent);
+    font-size: 1rem;
+  }
+  .setup-steps li:first-child { border-radius: 8px 8px 0 0; }
+  .setup-steps li:last-child { border-radius: 0 0 8px 8px; }
+  .setup-steps li strong { color: var(--text); }
+  .setup-steps li .note { color: var(--text-dim); font-size: 0.8rem; display: block; margin-top: 0.2rem; }
+
+  /* Legend */
+  .legend {
+    display: flex;
+    gap: 1.5rem;
+    margin: 1rem 0;
+    flex-wrap: wrap;
+  }
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: 0.8rem;
+    color: var(--text-dim);
+  }
+  .legend-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+  }
+  .legend-dot.green { background: var(--green); }
+  .legend-dot.yellow { background: var(--yellow); }
+  .legend-dot.purple { background: var(--accent); }
+
+  .divider {
+    border: none;
+    border-top: 1px solid var(--border);
+    margin: 2rem 0;
+  }
+
+  .footer {
+    margin-top: 3rem;
+    padding-top: 1rem;
+    border-top: 1px solid var(--border);
+    color: var(--text-dim);
+    font-size: 0.75rem;
+    text-align: center;
+  }
+
+  @media (max-width: 700px) {
+    body { padding: 1rem; }
+    .flow-step { grid-template-columns: 1fr; gap: 0.3rem; }
+    .flow-step .trigger { justify-self: start; }
+    .card-grid { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<h1>Claude Code — Development Workflow</h1>
+<p class="subtitle">Automatisierter Entwicklungsworkflow mit Skills, Hooks und Quality Gates</p>
+
+<div class="legend">
+  <div class="legend-item"><div class="legend-dot green"></div> Automatisch (Skill feuert selbst)</div>
+  <div class="legend-item"><div class="legend-dot yellow"></div> Einmalig manuell (du tippst den Befehl)</div>
+  <div class="legend-item"><div class="legend-dot purple"></div> Auto via CLAUDE.md-Regel</div>
+</div>
+
+<!-- ===== SETUP ===== -->
+<h2>Projekt-Setup (einmalig)</h2>
+
+<ol class="setup-steps">
+  <li>
+    <strong><code>/init-project</code></strong> — Tippe das in eine neue Claude Code Session im Projektverzeichnis.
+    <span class="note">Erkennt Tech-Stack und erstellt: Hooks, Subagents, CI, MCP-Config, Gitignore, PR-Template, CLAUDE.md-Regeln.</span>
+  </li>
+  <li>
+    <strong>Code schreiben</strong> — Entwickle das Projekt bis es eine echte Architektur hat.
+    <span class="note">Alle Skills (Brainstorming, TDD, Debugging) funktionieren ab sofort automatisch.</span>
+  </li>
+  <li>
+    <strong><code>/adapt-project</code></strong> — Tippe das wenn echte Source-Files und Tests existieren.
+    <span class="note">Scannt Architektur und aktualisiert: Test-Coverage-Tabellen, Hook-Pfade, Subagent-Scopes, CLAUDE.md.</span>
+  </li>
+</ol>
+
+<!-- ===== WORKFLOW ===== -->
+<h2>Entwicklungs-Workflow (jedes Feature)</h2>
+
+<div class="flow">
+  <div class="flow-step active">
+    <div class="phase">Start</div>
+    <div class="description">
+      <strong>Brainstorming</strong><br>
+      Beschreibe was du bauen willst. Der Skill fragt dich Fragen, schlaegt Ansaetze vor, schreibt ein Design-Doc.
+    </div>
+    <div class="trigger auto">AUTO — Skill</div>
+  </div>
+  <div class="arrow active-border">&#8595;</div>
+
+  <div class="flow-step active">
+    <div class="phase">Plan</div>
+    <div class="description">
+      <strong>Writing Plans</strong><br>
+      Erstellt einen Schritt-fuer-Schritt Implementierungsplan mit TDD-Steps, Dateipfaden und Commit-Points.
+    </div>
+    <div class="trigger auto">AUTO — Skill</div>
+  </div>
+  <div class="arrow active-border">&#8595;</div>
+
+  <div class="flow-step active">
+    <div class="phase">Build</div>
+    <div class="description">
+      <strong>Implementation</strong><br>
+      Pro Task: Test schreiben → Code schreiben → Review → Commit.<br>
+      <em>Aktive Skills:</em> test-driven-development, systematic-debugging, requesting-code-review, verification-before-completion
+    </div>
+    <div class="trigger auto">AUTO — Skills + Hooks</div>
+  </div>
+  <div class="arrow active-border">&#8595;</div>
+
+  <div class="flow-step active">
+    <div class="phase">Quality</div>
+    <div class="description">
+      <strong>QA Audit</strong><br>
+      Visual Testing (Screenshots, Responsive, Console, A11y) + Security Review + Test-Coverage-Luecken + Doku-Vollstaendigkeit.
+    </div>
+    <div class="trigger rule">AUTO — CLAUDE.md Regel</div>
+  </div>
+  <div class="arrow active-border">&#8595;</div>
+
+  <div class="flow-step active">
+    <div class="phase">Ship</div>
+    <div class="description">
+      <strong>Finishing Branch</strong><br>
+      Verifies tests pass, praesentiert Optionen: Merge lokal, PR erstellen, Branch behalten, oder verwerfen.
+    </div>
+    <div class="trigger auto">AUTO — Skill</div>
+  </div>
+</div>
+
+<!-- ===== HOOKS ===== -->
+<h2>Was laeuft im Hintergrund (Hooks)</h2>
+
+<div class="card-grid">
+  <div class="card">
+    <h4>Bei jeder Datei-Aenderung</h4>
+    <ul>
+      <li>JS-Dateien: <code>node --check</code> Syntax-Pruefung</li>
+      <li><code>.env</code> und Lock-Files: Aenderungen blockiert</li>
+    </ul>
+  </div>
+  <div class="card">
+    <h4>Bei jedem Commit</h4>
+    <ul>
+      <li>Source-Files ohne Tests? → Warnung</li>
+      <li>Keine .md-Datei im Commit? → Warnung</li>
+      <li>Checklist-Reminder: Tests + E2E + Docs</li>
+    </ul>
+  </div>
+</div>
+
+<!-- ===== COMMANDS ===== -->
+<h2>Command-Referenz</h2>
+
+<table class="cmd-table">
+  <thead>
+    <tr><th>Command</th><th>Wann</th><th>Was</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code>/init-project</code></td>
+      <td>Neues Projekt, einmalig</td>
+      <td>Tech-Stack erkennen, Hooks + CI + Subagents + MCP + CLAUDE.md erstellen</td>
+    </tr>
+    <tr>
+      <td><code>/adapt-project</code></td>
+      <td>Code existiert, einmalig</td>
+      <td>Architektur scannen, Test-Coverage-Tabellen, Hook-Pfade, Subagent-Scopes updaten</td>
+    </tr>
+    <tr>
+      <td><code>/visual-testing</code></td>
+      <td>Nach Features, vor PR</td>
+      <td>Full Audit: alle Views, Responsive, Console, Network, Accessibility</td>
+    </tr>
+    <tr>
+      <td><code>/visual-review &lt;url&gt;</code></td>
+      <td>Zwischendurch</td>
+      <td>Quick Check: Desktop + Mobile Screenshot, Console-Errors</td>
+    </tr>
+    <tr>
+      <td><code>/smoke-test &lt;url&gt;</code></td>
+      <td>Nach kleinen Aenderungen</td>
+      <td>Alle Buttons/Links klicken, auf Fehler pruefen</td>
+    </tr>
+    <tr>
+      <td><code>/setup-visual-testing</code></td>
+      <td>Neues Projekt</td>
+      <td>Browser-Testing-Regeln in CLAUDE.md einfuegen</td>
+    </tr>
+  </tbody>
+</table>
+
+<hr class="divider">
+
+<!-- ===== SKILLS ===== -->
+<h2>Automatische Skills (kein manueller Aufruf noetig)</h2>
+
+<div class="card-grid">
+  <div class="card">
+    <h4>brainstorming</h4>
+    <p>Triggert bei kreativer Arbeit. Fragt Fragen, schlaegt Ansaetze vor, schreibt Design-Doc.</p>
+  </div>
+  <div class="card">
+    <h4>writing-plans</h4>
+    <p>Erstellt Implementierungsplan nach Design-Approval. TDD-Steps, Dateipfade, Commits.</p>
+  </div>
+  <div class="card">
+    <h4>test-driven-development</h4>
+    <p>Schreibt Tests vor dem Code. Automatisch bei jeder Feature-Implementierung.</p>
+  </div>
+  <div class="card">
+    <h4>systematic-debugging</h4>
+    <p>Aktiviert bei Bugs. Sucht Root Cause statt Symptome zu patchen.</p>
+  </div>
+  <div class="card">
+    <h4>requesting-code-review</h4>
+    <p>Dispatcht Code-Reviewer nach jedem Task. Priorisiert Findings.</p>
+  </div>
+  <div class="card">
+    <h4>verification-before-completion</h4>
+    <p>Quality Gate: Erzwingt Beweise bevor etwas als "fertig" behauptet wird.</p>
+  </div>
+  <div class="card">
+    <h4>qa-audit</h4>
+    <p>Pre-PR Gate: Visual Testing + Security Review + Coverage-Gaps + Doku-Check.</p>
+  </div>
+  <div class="card">
+    <h4>finishing-a-development-branch</h4>
+    <p>Branch-Abschluss: Merge lokal, PR erstellen, behalten, oder verwerfen.</p>
+  </div>
+</div>
+
+<!-- ===== SUBAGENTS ===== -->
+<h2>Subagents (bei Bedarf aufgerufen)</h2>
+
+<div class="card-grid">
+  <div class="card">
+    <h4>Test Writer</h4>
+    <p>Schreibt Unit-Tests fuer neue/geaenderte Module. Kennt den Test-Style des Projekts, pflegt Coverage-Tabelle.</p>
+  </div>
+  <div class="card">
+    <h4>Security Reviewer</h4>
+    <p>Nur bei Projekten mit Backend. Prueft SQL Injection, Auth, CORS, Input Validation, WebSocket Security.</p>
+  </div>
+</div>
+
+<div class="footer">
+  Generiert am <span id="date"></span> — Gilt fuer alle Projekte mit Claude Code Setup
+</div>
+
+<script>
+  document.getElementById('date').textContent = new Date().toISOString().split('T')[0];
+</script>
+
+</body>
+</html>

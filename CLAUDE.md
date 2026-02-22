@@ -154,6 +154,34 @@ Three levels of visual testing, all via Playwright MCP:
 - Before PR: All critical issues from `/visual-testing` must be fixed
 - Screenshots are saved as PNGs in the working directory
 
+## Development Workflow
+
+This project uses the following automated workflow. Do NOT skip steps.
+
+### For new features / changes:
+1. **Brainstorming** — describe what you want to build. The `brainstorming` skill triggers automatically to explore requirements and design approaches.
+2. **Planning** — after design approval, the `writing-plans` skill creates a step-by-step implementation plan.
+3. **Implementation** — `subagent-driven-development` or `executing-plans` works through the plan. During implementation:
+   - `test-driven-development` writes tests before code (automatic)
+   - `systematic-debugging` activates on unexpected behavior (automatic)
+   - `requesting-code-review` reviews after each task (automatic)
+   - `verification-before-completion` requires evidence before claims (automatic)
+4. **QA Audit** — before creating a PR, the `qa-audit` skill runs automatically: visual testing, security review, test coverage gaps, documentation completeness. Complements (does not replace) `verification-before-completion`.
+5. **Branch completion** — `finishing-a-development-branch` presents merge/PR options.
+
+### For small bugfixes:
+1. `systematic-debugging` → find root cause
+2. `test-driven-development` → write failing test, then fix
+3. `qa-audit` → verify nothing else broke
+4. Commit
+
+### Rules:
+- NEVER skip qa-audit before a PR.
+- NEVER claim work is done without evidence (verification-before-completion enforces this).
+- ALL new logic code MUST have tests (commit hooks warn if missing).
+
+Workflow guide: `docs/workflow-guide.html`
+
 ## Claude Code Automations
 
 ### Hooks (`.claude/settings.json`)
