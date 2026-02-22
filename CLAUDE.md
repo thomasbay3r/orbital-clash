@@ -170,8 +170,18 @@ Three levels of visual testing, all via Playwright MCP:
 | Agent | File | When to use |
 |-------|------|-------------|
 | Test Writer | `test-writer.md` | When adding/changing simulation, physics, or constants in `src/shared/` |
+| Security Reviewer | `security-reviewer.md` | When changing Worker, auth, D1 queries, or WebSocket handling |
 
 Subagents are not auto-invoked. Call via Task tool when needed.
+
+### CI (`.github/workflows/tests.yml`)
+
+Runs automatically on push to `main` and on PRs:
+1. **Typecheck** (`npx tsc --noEmit`) — must pass
+2. **Unit tests** (`npm test`) — must pass (runs after typecheck)
+3. **E2E tests** (`npm run test:e2e`) — must pass (runs after unit tests)
+
+Failed Playwright reports are uploaded as artifacts (7 days retention).
 
 ## Key Design Decisions
 - Server-authoritative: physics run on server, client sends inputs only
