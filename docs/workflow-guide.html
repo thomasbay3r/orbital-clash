@@ -100,6 +100,32 @@
   }
   .arrow.active-border { border-left-color: var(--accent); background: var(--surface2); }
 
+  /* Skill detail badges within flow steps */
+  .skill-detail {
+    display: flex;
+    align-items: baseline;
+    gap: 0.5rem;
+    margin-top: 0.35rem;
+    font-size: 0.8rem;
+  }
+  .skill-detail.sub-detail { padding-left: 0.5rem; }
+  .skill-detail.hook-detail { margin-top: 0.6rem; }
+  .skill-badge {
+    font-size: 0.7rem;
+    font-weight: 700;
+    padding: 0.15rem 0.5rem;
+    border-radius: 3px;
+    white-space: nowrap;
+    flex-shrink: 0;
+    font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
+  }
+  .auto-badge { background: rgba(52, 211, 153, 0.15); color: var(--green); }
+  .rule-badge { background: rgba(124, 106, 239, 0.15); color: var(--accent); }
+  .hook-badge { background: rgba(251, 191, 36, 0.15); color: var(--yellow); }
+  .agent-badge { background: rgba(96, 165, 250, 0.15); color: var(--blue); }
+  .manual-badge { background: rgba(251, 146, 60, 0.15); color: var(--orange); }
+  .skill-how { color: var(--text-dim); }
+
   /* Cards */
   .card-grid {
     display: grid;
@@ -206,6 +232,7 @@
   .legend-dot.green { background: var(--green); }
   .legend-dot.yellow { background: var(--yellow); }
   .legend-dot.purple { background: var(--accent); }
+  .legend-dot.blue { background: var(--blue); }
 
   .divider {
     border: none;
@@ -237,8 +264,9 @@
 
 <div class="legend">
   <div class="legend-item"><div class="legend-dot green"></div> Automatisch (Skill feuert selbst)</div>
-  <div class="legend-item"><div class="legend-dot yellow"></div> Einmalig manuell (du tippst den Befehl)</div>
+  <div class="legend-item"><div class="legend-dot yellow"></div> Hook (laeuft im Hintergrund)</div>
   <div class="legend-item"><div class="legend-dot purple"></div> Auto via CLAUDE.md-Regel</div>
+  <div class="legend-item"><div class="legend-dot blue"></div> Subagent (bei Bedarf dispatcht)</div>
 </div>
 
 <!-- ===== SETUP ===== -->
@@ -268,6 +296,14 @@
     <div class="description">
       <strong>Brainstorming</strong><br>
       Beschreibe was du bauen willst. Der Skill fragt dich Fragen, schlaegt Ansaetze vor, schreibt ein Design-Doc.
+      <div class="skill-detail">
+        <span class="skill-badge auto-badge">brainstorming</span>
+        <span class="skill-how">Triggert automatisch bei kreativer Arbeit ("Baue X", "Fuege Y hinzu"). Du musst nichts tun.</span>
+      </div>
+      <div class="skill-detail">
+        <span class="skill-badge auto-badge">using-git-worktrees</span>
+        <span class="skill-how">Erstellt automatisch einen isolierten Worktree fuer die Arbeit.</span>
+      </div>
     </div>
     <div class="trigger auto">AUTO — Skill</div>
   </div>
@@ -278,6 +314,14 @@
     <div class="description">
       <strong>Writing Plans</strong><br>
       Erstellt einen Schritt-fuer-Schritt Implementierungsplan mit TDD-Steps, Dateipfaden und Commit-Points.
+      <div class="skill-detail">
+        <span class="skill-badge auto-badge">writing-plans</span>
+        <span class="skill-how">Wird automatisch von brainstorming aufgerufen nach Design-Approval. Kein manueller Aufruf.</span>
+      </div>
+      <div class="skill-detail">
+        <span class="skill-badge auto-badge">subagent-driven-development</span>
+        <span class="skill-how">Plan bietet Ausfuehrungsoption an — du wahlst "Subagent-Driven" oder "Parallel Session".</span>
+      </div>
     </div>
     <div class="trigger auto">AUTO — Skill</div>
   </div>
@@ -286,9 +330,40 @@
   <div class="flow-step active">
     <div class="phase">Build</div>
     <div class="description">
-      <strong>Implementation</strong><br>
-      Pro Task: Test schreiben → Code schreiben → Review → Commit.<br>
-      <em>Aktive Skills:</em> test-driven-development, systematic-debugging, requesting-code-review, verification-before-completion
+      <strong>Implementation (pro Task im Plan)</strong><br>
+      Zyklus: Test schreiben → Code schreiben → Tests laufen lassen → Review → Commit.
+      <div class="skill-detail">
+        <span class="skill-badge auto-badge">test-driven-development</span>
+        <span class="skill-how">AUTO — Triggert bei jeder Feature-/Bugfix-Implementierung. Schreibt Test vor Code.</span>
+      </div>
+      <div class="skill-detail">
+        <span class="skill-badge auto-badge">systematic-debugging</span>
+        <span class="skill-how">AUTO — Triggert bei Bugs/Test-Fehlern. Sucht Root Cause statt Symptome zu patchen.</span>
+      </div>
+      <div class="skill-detail">
+        <span class="skill-badge auto-badge">requesting-code-review</span>
+        <span class="skill-how">AUTO — Triggert nach jedem abgeschlossenen Task. Dispatcht Code-Review-Subagent.</span>
+      </div>
+      <div class="skill-detail">
+        <span class="skill-badge auto-badge">verification-before-completion</span>
+        <span class="skill-how">AUTO — Triggert bevor "fertig" behauptet wird. Erzwingt <code>npm test</code> + Beweis.</span>
+      </div>
+      <div class="skill-detail hook-detail">
+        <span class="skill-badge hook-badge">Hook: JS Syntax-Check</span>
+        <span class="skill-how">Bei jeder .js/.ts-Datei-Aenderung: <code>node --check</code> automatisch.</span>
+      </div>
+      <div class="skill-detail hook-detail">
+        <span class="skill-badge hook-badge">Hook: Commit-Warnung</span>
+        <span class="skill-how">Beim Commit: Warnt wenn Source-Dateien ohne Tests oder kein .md-File enthalten.</span>
+      </div>
+      <div class="skill-detail">
+        <span class="skill-badge agent-badge">Subagent: test-writer</span>
+        <span class="skill-how">Bei Bedarf via Task-Tool aufgerufen fuer neue Unit-Tests.</span>
+      </div>
+      <div class="skill-detail">
+        <span class="skill-badge auto-badge">playwright-skill</span>
+        <span class="skill-how">AUTO — Triggert beim Schreiben/Ausfuehren von E2E-Tests. Generiert Playwright-Scripts mit Best Practices (headless).</span>
+      </div>
     </div>
     <div class="trigger auto">AUTO — Skills + Hooks</div>
   </div>
@@ -298,7 +373,31 @@
     <div class="phase">Quality</div>
     <div class="description">
       <strong>QA Audit</strong><br>
-      Visual Testing (Screenshots, Responsive, Console, A11y) + Security Review + Test-Coverage-Luecken + Doku-Vollstaendigkeit.
+      Visual Testing + Security Review + Test-Coverage-Luecken + Doku-Vollstaendigkeit.
+      <div class="skill-detail">
+        <span class="skill-badge rule-badge">qa-audit</span>
+        <span class="skill-how">AUTO via CLAUDE.md-Regel — wird erzwungen bevor ein PR erstellt werden darf.</span>
+      </div>
+      <div class="skill-detail sub-detail">
+        <span class="skill-badge auto-badge">↳ visual-testing</span>
+        <span class="skill-how">Schritt 1a: Screenshots aller Views, Responsive (375/768/1280), Console, A11y (via Playwright MCP).</span>
+      </div>
+      <div class="skill-detail sub-detail">
+        <span class="skill-badge auto-badge">↳ playwright-skill</span>
+        <span class="skill-how">Schritt 1b: Automatisierte Interaktionstests — Buttons, Formulare, User Flows (headless, via Script).</span>
+      </div>
+      <div class="skill-detail sub-detail">
+        <span class="skill-badge agent-badge">↳ Subagent: security-reviewer</span>
+        <span class="skill-how">Schritt 2 von qa-audit: SQL Injection, Auth, CORS, Input Validation (nur bei Backend).</span>
+      </div>
+      <div class="skill-detail sub-detail">
+        <span class="skill-badge rule-badge">↳ Coverage-Scan</span>
+        <span class="skill-how">Schritt 3: Scannt Source-Files ohne passende Tests.</span>
+      </div>
+      <div class="skill-detail sub-detail">
+        <span class="skill-badge rule-badge">↳ Doku-Check</span>
+        <span class="skill-how">Schritt 4: Prueft README, CLAUDE.md, AGENTS.md auf Aktualitaet.</span>
+      </div>
     </div>
     <div class="trigger rule">AUTO — CLAUDE.md Regel</div>
   </div>
@@ -309,6 +408,10 @@
     <div class="description">
       <strong>Finishing Branch</strong><br>
       Verifies tests pass, praesentiert Optionen: Merge lokal, PR erstellen, Branch behalten, oder verwerfen.
+      <div class="skill-detail">
+        <span class="skill-badge auto-badge">finishing-a-development-branch</span>
+        <span class="skill-how">AUTO — Triggert wenn Implementierung abgeschlossen und alle Tests gruen.</span>
+      </div>
     </div>
     <div class="trigger auto">AUTO — Skill</div>
   </div>
@@ -331,6 +434,32 @@
       <li>Source-Files ohne Tests? → Warnung</li>
       <li>Keine .md-Datei im Commit? → Warnung</li>
       <li>Checklist-Reminder: Tests + E2E + Docs</li>
+    </ul>
+  </div>
+</div>
+
+<!-- ===== BROWSER TESTING ===== -->
+<h2>Browser-Testing (zwei Playwright-Integrationen)</h2>
+
+<div class="card-grid">
+  <div class="card">
+    <h4>Playwright MCP Plugin</h4>
+    <p>Stellt <code>browser_*</code> Tools bereit (navigate, snapshot, screenshot, click, etc.). Wird von <code>visual-testing</code> und <code>qa-audit</code> fuer strukturierte Audits genutzt.</p>
+    <ul>
+      <li>Snapshot-basierte Accessibility-Pruefung</li>
+      <li>Responsive Screenshots (resize + capture)</li>
+      <li>Console-Errors und Network-Failures</li>
+      <li>Interaktive Elemente pruefen</li>
+    </ul>
+  </div>
+  <div class="card">
+    <h4>playwright-skill <span style="font-size:0.7rem;color:var(--text-dim);font-weight:400;">(Plugin: lackeyjb)</span></h4>
+    <p>Claude schreibt Custom-Playwright-Scripts und fuehrt sie aus. Fuer komplexe Flows und E2E-Test-Generierung.</p>
+    <ul>
+      <li>Best-Practice Locators (<code>getByRole</code>, <code>getByText</code>)</li>
+      <li>Proper Wait-Strategien statt Timeouts</li>
+      <li>Multi-Step User Flows (Login, Forms, Navigation)</li>
+      <li><strong>Immer headless</strong> — kein Browser-Popup</li>
     </ul>
   </div>
 </div>
@@ -413,6 +542,10 @@
   <div class="card">
     <h4>finishing-a-development-branch</h4>
     <p>Branch-Abschluss: Merge lokal, PR erstellen, behalten, oder verwerfen.</p>
+  </div>
+  <div class="card">
+    <h4>playwright-skill <span style="font-size:0.7rem;color:var(--text-dim);font-weight:400;">(Plugin: lackeyjb)</span></h4>
+    <p>Schreibt und fuehrt Playwright-Scripts aus. Best-Practice Locators (<code>getByRole</code>), Wait-Strategien. Immer headless. Fuer E2E-Tests und automatisierte Interaktionstests.</p>
   </div>
 </div>
 

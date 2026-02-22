@@ -140,15 +140,23 @@ Menu (ship, map, mode) → Mod-Select (weapon, ship, passive, control mode)
 - Auto-deploy hook: runs automatically after every `git push` (via `.claude/hooks/deploy-after-push.js`)
 - Always deploy after pushing changes that affect the client or server
 
-## Browser-Testing (Playwright MCP)
+## Browser-Testing (Playwright)
 
-Three levels of visual testing, all via Playwright MCP:
+Two Playwright integrations are available:
+
+**Playwright MCP Plugin** (visual audits via `browser_*` tools):
 
 | Command | When | What |
 |---------|------|------|
 | `/visual-testing` | After feature implementation, before PR | Full audit: all views, responsive, console, network, a11y |
 | `/visual-review <url>` | Quick check during development | Desktop + mobile screenshot, console errors |
 | `/smoke-test <url>` | After small changes | Click all buttons/links, check for errors |
+
+**playwright-skill** (custom script automation, plugin: lackeyjb):
+- Auto-triggers when writing/running Playwright scripts
+- Best-practice locators (`getByRole`, `getByText`), proper wait strategies
+- For: complex user flows, E2E test generation, multi-step interactions
+- **ALWAYS use `headless: true`** — no visible browser popup
 
 - Default URL: `http://localhost:4173` (Vite dev server)
 - Before PR: All critical issues from `/visual-testing` must be fixed
