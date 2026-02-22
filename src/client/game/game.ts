@@ -62,6 +62,7 @@ export class Game {
   private activeRoomCode = ""; // room code shown during gameplay
   private playerName = "Player";
   private connectionCheckInterval: ReturnType<typeof setInterval> | null = null;
+  private copiedFeedbackTimer = 0;
 
   // Audio tracking
   private prevProjectileCount = 0;
@@ -93,6 +94,7 @@ export class Game {
 
     const dt = Math.min((time - this.lastTime) / 1000, 0.05);
     this.lastTime = time;
+    if (this.copiedFeedbackTimer > 0) this.copiedFeedbackTimer -= dt;
 
     const mx = this.input.getMouseX();
     const my = this.input.getMouseY();
@@ -275,6 +277,7 @@ export class Game {
       const hit = this.hitTestLocal(mx, my);
       if (!hit) return;
       if (hit === "button-new-room") this.createAndJoinRoom();
+      if (hit === "button-copy-code") this.copyRoomCode();
       if (hit === "button-lobby-back") {
         if (this.connectionCheckInterval) {
           clearInterval(this.connectionCheckInterval);
@@ -284,7 +287,19 @@ export class Game {
         this.isOnline = false;
         this.screen = "mod-select";
       }
+    } else if (this.screen === "playing" && this.isOnline && this.activeRoomCode) {
+      // Copy room code from HUD (top right area)
+      const w = window.innerWidth;
+      if (mx >= w - 160 && mx <= w - 10 && my >= 42 && my <= 68) {
+        this.copyRoomCode();
+      }
     }
+  }
+
+  private copyRoomCode(): void {
+    if (!this.activeRoomCode) return;
+    navigator.clipboard.writeText(this.activeRoomCode).catch(() => {});
+    this.copiedFeedbackTimer = 2;
   }
 
   private hitTestLocal(mx: number, my: number): string | null {
@@ -399,7 +414,7 @@ export class Game {
     if (this.isOnline) {
       const input = this.input.getInput();
       this.connection.send({ type: "input", input });
-      this.renderer.render(this.gameState, this.localPlayerId, dt, this.activeRoomCode);
+      this.renderer.render(this.gameState, this.localPlayerId, dt, this.activeRoomCode, this.copiedFeedbackTimer);
       return;
     }
 
@@ -723,6 +738,12 @@ export class Game {
       ctx.font = "bold 32px monospace";
       ctx.fillStyle = "#ffaa00";
       ctx.fillText(this.activeRoomCode, w / 2, 368);
+
+      // Copy button
+      const copyLabel = this.copiedFeedbackTimer > 0 ? "Kopiert!" : "[ Kopieren ]";
+      const copyColor = this.copiedFeedbackTimer > 0 ? "#44ff88" : COLORS.uiDim;
+      const copyHovered = this.hitTestLocal(mx, my) === "button-copy-code";
+      this.drawMenuButton(ctx, w / 2, 405, 140, 28, copyLabel, copyHovered ? COLORS.ui : copyColor, "button-copy-code", mx, my);
     }
 
     // Status

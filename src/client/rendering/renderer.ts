@@ -58,7 +58,7 @@ export class Renderer {
     }
   }
 
-  render(state: GameState, localPlayerId: string, dt: number, roomCode?: string): void {
+  render(state: GameState, localPlayerId: string, dt: number, roomCode?: string, copiedFeedback = 0): void {
     this.time += dt;
     this.canvas.width = window.innerWidth;
     this.canvas.height = window.innerHeight;
@@ -91,7 +91,7 @@ export class Renderer {
 
     // HUD is drawn in screen space
     if (localPlayer) {
-      this.drawHUD(state, localPlayer, roomCode);
+      this.drawHUD(state, localPlayer, roomCode, copiedFeedback);
     }
 
     if (state.gameOver) {
@@ -522,7 +522,7 @@ export class Renderer {
 
   // ===== HUD (Screen Space) =====
 
-  drawHUD(state: GameState, player: PlayerState, roomCode?: string): void {
+  drawHUD(state: GameState, player: PlayerState, roomCode?: string, copiedFeedback = 0): void {
     const ctx = this.ctx;
     const w = this.canvas.width;
     const h = this.canvas.height;
@@ -563,8 +563,13 @@ export class Renderer {
     if (roomCode) {
       ctx.font = "11px monospace";
       ctx.textAlign = "right";
-      ctx.fillStyle = COLORS.uiDim;
-      ctx.fillText(`Raum: ${roomCode}`, w - 20, 55);
+      if (copiedFeedback > 0) {
+        ctx.fillStyle = "#44ff88";
+        ctx.fillText("Kopiert!", w - 20, 55);
+      } else {
+        ctx.fillStyle = COLORS.uiDim;
+        ctx.fillText(`Raum: ${roomCode}  [kopieren]`, w - 20, 55);
+      }
     }
 
     // Scoreboard (top left)
