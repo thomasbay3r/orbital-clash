@@ -339,14 +339,37 @@ export class Renderer {
         this.ctx.globalAlpha = 0.3;
       }
 
+      // Respawn invulnerability: blinking transparency
+      if (player.invulnerable) {
+        const blink = 0.5 + 0.3 * Math.sin(this.time * 25);
+        this.ctx.globalAlpha = blink;
+      }
+
       // Ship body
       this.drawShipBody(player, config, isLocal);
+
+      // Invulnerability glow ring
+      if (player.invulnerable) {
+        const pulseR = config.collisionRadius * (1.4 + 0.2 * Math.sin(this.time * 15));
+        this.ctx.strokeStyle = "#ffffff";
+        this.ctx.lineWidth = 1.5;
+        this.ctx.globalAlpha = 0.4 + 0.2 * Math.sin(this.time * 20);
+        this.ctx.beginPath();
+        this.ctx.arc(0, 0, pulseR, 0, Math.PI * 2);
+        this.ctx.stroke();
+      }
 
       this.ctx.restore();
 
       // Shield bubble (not rotated)
       if (player.shieldActive) {
         this.drawShield(player, config);
+      }
+
+      // Apply invulnerability blink to HP bar and name too
+      if (player.invulnerable) {
+        const blink = 0.5 + 0.3 * Math.sin(this.time * 25);
+        this.ctx.globalAlpha = blink;
       }
 
       // HP bar
@@ -356,6 +379,9 @@ export class Renderer {
 
       // Name tag
       this.drawNameTag(player, config, isLocal);
+
+      // Reset alpha after invulnerability blink
+      this.ctx.globalAlpha = 1;
 
       // Radar indicator for enemies (passive mod)
       if (isLocal && state.players[localPlayerId]?.mods.passive === "radar") {

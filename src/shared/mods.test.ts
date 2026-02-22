@@ -81,7 +81,7 @@ describe("Ship Mods", () => {
     addPlayer(state, "p1", "Tank", "viper", {
       weapon: "piercing", ship: "hull-plating", passive: "scavenger",
     });
-    expect(state.players["p1"].maxHp).toBe(100); // 80 * 1.25
+    expect(state.players["p1"].maxHp).toBe(150); // 120 * 1.25
     // Speed reduction is applied during movement, not stored
   });
 

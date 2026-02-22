@@ -62,12 +62,12 @@ describe("Player Management", () => {
     expect(state.players["p1"].name).toBe("TestPlayer");
     expect(state.players["p1"].shipClass).toBe("viper");
     expect(state.players["p1"].alive).toBe(true);
-    expect(state.players["p1"].hp).toBe(80); // viper base hp
+    expect(state.players["p1"].hp).toBe(120); // viper base hp
   });
 
   it("should apply hull-plating mod", () => {
     addPlayer(state, "p1", "Tank", "titan", { ...DEFAULT_MODS, ship: "hull-plating" });
-    expect(state.players["p1"].maxHp).toBe(200); // 160 * 1.25
+    expect(state.players["p1"].maxHp).toBe(275); // 220 * 1.25
   });
 
   it("should remove a player", () => {
@@ -171,7 +171,7 @@ describe("Combat", () => {
     for (let i = 0; i < 5; i++) {
       simulateTick(state, { p1: input }, 1 / 60);
     }
-    expect(state.players["p2"].hp).toBeLessThan(80); // viper has 80 hp
+    expect(state.players["p2"].hp).toBeLessThan(120); // viper has 120 hp
   });
 
   it("should kill player at 0 hp and respawn", () => {
@@ -202,7 +202,7 @@ describe("Combat", () => {
       simulateTick(state, {}, 1 / 60);
     }
     expect(state.players["p2"].alive).toBe(true);
-    expect(state.players["p2"].hp).toBe(80);
+    expect(state.players["p2"].hp).toBe(120);
   });
 });
 

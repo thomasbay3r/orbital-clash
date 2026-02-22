@@ -10,9 +10,9 @@ import {
 import {
   createGameState, addPlayer, simulateTick,
 } from "../../shared/game-simulation";
-import { SHIP_CONFIGS, COLORS } from "../../shared/constants";
+import { SHIP_CONFIGS, COLORS, DIFFICULTY_PRESETS, DEFAULT_DIFFICULTY_INDEX } from "../../shared/constants";
 
-type Screen = "menu" | "mod-select" | "playing" | "online-lobby";
+type Screen = "menu" | "mod-select" | "settings" | "playing" | "online-lobby";
 
 const SHIP_OPTIONS: ShipClass[] = ["viper", "titan", "specter", "nova"];
 const MAP_OPTIONS: MapId[] = ["nebula-station", "asteroid-belt", "the-singularity"];
@@ -43,8 +43,10 @@ export class Game {
   private selectedShipMod = 0;
   private selectedPassiveMod = 0;
   private selectedControlMode = 0;
+  private selectedDifficulty = DEFAULT_DIFFICULTY_INDEX;
+  private selectedBotCount = 3;
 
-  // Click regions for mod-select / online-lobby
+  // Click regions for mod-select / online-lobby / settings
   private menuClickRegions: ClickableRegion[] = [];
 
   // Game state
@@ -102,6 +104,9 @@ export class Game {
       case "mod-select":
         this.drawModSelect();
         break;
+      case "settings":
+        this.drawSettings();
+        break;
       case "online-lobby":
         this.drawOnlineLobby();
         break;
@@ -151,10 +156,32 @@ export class Game {
         this.selectedControlMode = (this.selectedControlMode + 1) % CONTROL_MODE_OPTIONS.length;
       }
       if (key === "enter") {
-        this.startLocalGame();
+        this.screen = "settings";
       }
       if (key === "escape") {
         this.screen = "menu";
+      }
+    } else if (this.screen === "settings") {
+      if (key === "enter") {
+        this.startLocalGame();
+      }
+      if (key === "escape") {
+        this.screen = "mod-select";
+      }
+      if (key === "arrowleft" || key === "q") {
+        this.selectedDifficulty = Math.max(0, this.selectedDifficulty - 1);
+      }
+      if (key === "arrowright" || key === "e") {
+        this.selectedDifficulty = Math.min(DIFFICULTY_PRESETS.length - 1, this.selectedDifficulty + 1);
+      }
+      if (key >= "1" && key <= "5") {
+        this.selectedDifficulty = parseInt(key) - 1;
+      }
+      if (key === "arrowup" || key === "w") {
+        this.selectedBotCount = Math.min(3, this.selectedBotCount + 1);
+      }
+      if (key === "arrowdown" || key === "s") {
+        this.selectedBotCount = Math.max(1, this.selectedBotCount - 1);
       }
     } else if (this.screen === "online-lobby") {
       if (key === "escape") {
@@ -215,8 +242,15 @@ export class Game {
       if (hit.startsWith("mod-ship-")) this.selectedShipMod = parseInt(hit.split("-")[2]);
       if (hit.startsWith("mod-passive-")) this.selectedPassiveMod = parseInt(hit.split("-")[2]);
       if (hit.startsWith("control-mode-")) this.selectedControlMode = parseInt(hit.split("-")[2]);
-      if (hit === "button-start") this.startLocalGame();
+      if (hit === "button-start") this.screen = "settings";
       if (hit === "button-back") this.screen = "menu";
+    } else if (this.screen === "settings") {
+      const hit = this.hitTestLocal(mx, my);
+      if (!hit) return;
+      if (hit.startsWith("difficulty-")) this.selectedDifficulty = parseInt(hit.split("-")[1]);
+      if (hit.startsWith("botcount-")) this.selectedBotCount = parseInt(hit.split("-")[1]);
+      if (hit === "button-start-game") this.startLocalGame();
+      if (hit === "button-settings-back") this.screen = "mod-select";
     } else if (this.screen === "online-lobby") {
       const hit = this.hitTestLocal(mx, my);
       if (!hit) return;
@@ -266,7 +300,8 @@ export class Game {
     this.gameState = createGameState(mode, mapId);
     addPlayer(this.gameState, this.localPlayerId, this.playerName, shipClass, mods, controlMode);
 
-    const botCount = mode === "duel" ? 1 : 3;
+    const botCount = mode === "duel" ? 1 : this.selectedBotCount;
+    const preset = DIFFICULTY_PRESETS[this.selectedDifficulty];
     this.bots = [];
     const availableShips = SHIP_OPTIONS.filter((s) => s !== shipClass);
 
@@ -279,7 +314,7 @@ export class Game {
         passive: (["scavenger", "overcharge", "ghost-trail", "radar"] as const)[Math.floor(Math.random() * 4)],
       };
       addPlayer(this.gameState, botId, BOT_NAMES[i % BOT_NAMES.length], botShip, botMods);
-      this.bots.push(new Bot(botId, 0.3 + Math.random() * 0.4));
+      this.bots.push(new Bot(botId, preset));
     }
 
     this.initAudioTracking();
@@ -502,8 +537,120 @@ export class Game {
     }
 
     // Buttons
-    this.drawMenuButton(ctx, w / 2, 645, 220, 44, "Spiel starten", COLORS.ui, "button-start", mx, my);
+    this.drawMenuButton(ctx, w / 2, 645, 220, 44, "Weiter", COLORS.ui, "button-start", mx, my);
     this.drawMenuButton(ctx, w / 2, 700, 150, 36, "Zurueck", COLORS.uiDim, "button-back", mx, my);
+  }
+
+  // ===== Settings Screen =====
+
+  private drawSettings(): void {
+    const ctx = this.canvas.getContext("2d")!;
+    const w = this.canvas.width = window.innerWidth;
+    const h = this.canvas.height = window.innerHeight;
+    this.menuClickRegions = [];
+
+    const mx = this.input.getMouseX();
+    const my = this.input.getMouseY();
+
+    ctx.fillStyle = COLORS.background;
+    ctx.fillRect(0, 0, w, h);
+
+    ctx.font = "bold 36px monospace";
+    ctx.textAlign = "center";
+    ctx.fillStyle = COLORS.ui;
+    ctx.fillText("SPIELEINSTELLUNGEN", w / 2, 60);
+
+    // Difficulty section
+    ctx.font = "bold 18px monospace";
+    ctx.fillStyle = "#ff4444";
+    ctx.fillText("BOT-SCHWIERIGKEIT", w / 2, 110);
+
+    const diffColors = ["#44ff44", "#88ff00", "#ffaa00", "#ff6600", "#ff2222"];
+    for (let i = 0; i < DIFFICULTY_PRESETS.length; i++) {
+      const preset = DIFFICULTY_PRESETS[i];
+      const bx = w / 2 - 365 + i * 148;
+      const by = 130;
+      const bw = 135;
+      const bh = 75;
+      const isSelected = i === this.selectedDifficulty;
+      const regionId = `difficulty-${i}`;
+      const isHovered = this.hitTestLocal(mx, my) === regionId;
+      const diffColor = diffColors[i];
+
+      ctx.strokeStyle = isSelected ? diffColor : (isHovered ? COLORS.ui : COLORS.uiDim);
+      ctx.lineWidth = isSelected ? 2 : 1;
+      ctx.strokeRect(bx, by, bw, bh);
+
+      if (isSelected) {
+        ctx.fillStyle = diffColor + "15";
+        ctx.fillRect(bx, by, bw, bh);
+      } else if (isHovered) {
+        ctx.fillStyle = COLORS.ui + "08";
+        ctx.fillRect(bx, by, bw, bh);
+      }
+
+      ctx.font = "bold 11px monospace";
+      ctx.fillStyle = isSelected ? COLORS.ui : (isHovered ? COLORS.ui : COLORS.uiDim);
+      ctx.fillText(preset.name, bx + bw / 2, by + 25);
+
+      ctx.font = "9px monospace";
+      ctx.fillStyle = COLORS.uiDim;
+      ctx.fillText(preset.description, bx + bw / 2, by + 45);
+
+      // Difficulty bar
+      const barW = bw - 20;
+      const barH = 4;
+      const barX = bx + 10;
+      const barY = by + 58;
+      ctx.fillStyle = "#111133";
+      ctx.fillRect(barX, barY, barW, barH);
+      ctx.fillStyle = diffColor;
+      ctx.fillRect(barX, barY, barW * preset.difficulty, barH);
+
+      this.menuClickRegions.push({ x: bx, y: by, width: bw, height: bh, id: regionId });
+    }
+
+    // Bot count section
+    ctx.font = "bold 18px monospace";
+    ctx.fillStyle = "#4488ff";
+    ctx.fillText("ANZAHL BOTS", w / 2, 250);
+
+    for (let i = 1; i <= 3; i++) {
+      const bx = w / 2 - 200 + (i - 1) * 140;
+      const by = 270;
+      const bw = 120;
+      const bh = 50;
+      const isSelected = i === this.selectedBotCount;
+      const regionId = `botcount-${i}`;
+      const isHovered = this.hitTestLocal(mx, my) === regionId;
+
+      ctx.strokeStyle = isSelected ? "#4488ff" : (isHovered ? COLORS.ui : COLORS.uiDim);
+      ctx.lineWidth = isSelected ? 2 : 1;
+      ctx.strokeRect(bx, by, bw, bh);
+
+      if (isSelected) {
+        ctx.fillStyle = "#4488ff15";
+        ctx.fillRect(bx, by, bw, bh);
+      } else if (isHovered) {
+        ctx.fillStyle = COLORS.ui + "08";
+        ctx.fillRect(bx, by, bw, bh);
+      }
+
+      ctx.font = "bold 24px monospace";
+      ctx.fillStyle = isSelected ? COLORS.ui : (isHovered ? COLORS.ui : COLORS.uiDim);
+      ctx.fillText(`${i}`, bx + bw / 2, by + 34);
+
+      this.menuClickRegions.push({ x: bx, y: by, width: bw, height: bh, id: regionId });
+    }
+
+    // Hints
+    ctx.font = "12px monospace";
+    ctx.fillStyle = COLORS.uiDim;
+    ctx.fillText("Q/E = Schwierigkeit  |  W/S = Bots  |  1-5 = Schwierigkeit direkt", w / 2, 360);
+
+    // Buttons
+    this.drawMenuButton(ctx, w / 2, 410, 220, 44, "LOS GEHTS!", COLORS.ui, "button-start-game", mx, my);
+    this.drawMenuButton(ctx, w / 2, 465, 150, 36, "Zurueck", COLORS.uiDim, "button-settings-back", mx, my);
   }
 
   // ===== Online Lobby Screen =====

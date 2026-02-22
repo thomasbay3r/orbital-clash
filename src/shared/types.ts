@@ -88,6 +88,9 @@ export interface PlayerState {
   shieldActive: boolean;
   shieldHp: number;
   controlMode: ControlMode;
+  // Respawn invulnerability
+  invulnerable: boolean;
+  invulnerabilityTimer: number;
 }
 
 export interface Projectile {

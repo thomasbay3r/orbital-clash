@@ -5,7 +5,7 @@ import {
 import {
   SHIP_CONFIGS, WEAPON_CONFIGS, SPECIAL_CONFIGS,
   DRIFT_FRICTION, BOOST_MULTIPLIER, BOOST_ENERGY_COST,
-  ENERGY_REGEN_RATE, MAX_ENERGY, RESPAWN_TIME,
+  ENERGY_REGEN_RATE, MAX_ENERGY, RESPAWN_TIME, INVULNERABILITY_TIME,
   GRAVITY_DAMAGE_RADIUS, GRAVITY_DAMAGE, MODE_DURATIONS,
   KOTH_WIN_SCORE, KOTH_ZONE_RADIUS, KOTH_CAPTURE_RATE,
   GRAVITY_SHIFT_INTERVAL,
@@ -116,6 +116,8 @@ export function addPlayer(
     shieldActive: false,
     shieldHp: 0,
     controlMode,
+    invulnerable: false,
+    invulnerabilityTimer: 0,
   };
   state.kothScores[id] = 0;
 }
@@ -207,6 +209,15 @@ function updatePlayer(
       respawnPlayer(state, player);
     }
     return;
+  }
+
+  // Invulnerability timer
+  if (player.invulnerable) {
+    player.invulnerabilityTimer -= dt;
+    if (player.invulnerabilityTimer <= 0) {
+      player.invulnerable = false;
+      player.invulnerabilityTimer = 0;
+    }
   }
 
   // Cooldowns
@@ -325,6 +336,11 @@ function updatePlayer(
 
     // Shooting
     if (input.shoot && player.shootCooldown <= 0 && !player.phaseActive) {
+    // Shooting cancels respawn invulnerability
+    if (player.invulnerable) {
+      player.invulnerable = false;
+      player.invulnerabilityTimer = 0;
+    }
     const fireRate = player.mods.weapon === "rapid-fire"
       ? weaponConfig.fireRate * 1.4
       : weaponConfig.fireRate;
@@ -461,7 +477,7 @@ function activateSpecial(
     case "emp-pulse": {
       // Damage and disable nearby enemies
       for (const target of Object.values(state.players)) {
-        if (target.id === player.id || !target.alive) continue;
+        if (target.id === player.id || !target.alive || target.invulnerable) continue;
         if (distance(player.position, target.position) < specialConfig.radius) {
           target.energy = 0;
           target.specialCooldown = Math.max(target.specialCooldown, 3);
@@ -534,6 +550,8 @@ function respawnPlayer(state: GameState, player: PlayerState): void {
   player.hp = player.maxHp;
   player.energy = player.maxEnergy;
   player.alive = true;
+  player.invulnerable = true;
+  player.invulnerabilityTimer = INVULNERABILITY_TIME;
   player.consecutiveHits = 0;
   player.phaseActive = false;
   player.shieldActive = false;
@@ -623,7 +641,7 @@ function checkProjectileCollisions(state: GameState): void {
 
     for (const player of Object.values(state.players)) {
       if (player.id === proj.ownerId) continue;
-      if (!player.alive || player.phaseActive) continue;
+      if (!player.alive || player.phaseActive || player.invulnerable) continue;
       if (proj.piercing && proj.hitEntities.includes(player.id)) continue;
 
       const shipConfig = SHIP_CONFIGS[player.shipClass];
@@ -719,7 +737,7 @@ function killPlayer(
 function checkGravityWellDamage(state: GameState, dt: number): void {
   for (const well of state.gravityWells) {
     for (const player of Object.values(state.players)) {
-      if (!player.alive || player.phaseActive) continue;
+      if (!player.alive || player.phaseActive || player.invulnerable) continue;
       if (distance(player.position, well.position) < GRAVITY_DAMAGE_RADIUS) {
         player.hp -= GRAVITY_DAMAGE * dt;
         if (player.hp <= 0) {

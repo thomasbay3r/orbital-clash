@@ -13,6 +13,7 @@ export const BOOST_ENERGY_COST = 35; // per second
 export const BOOST_MULTIPLIER = 1.8;
 export const DRIFT_FRICTION = 0.97;
 export const RESPAWN_TIME = 3; // seconds
+export const INVULNERABILITY_TIME = 2.5; // seconds after respawn
 
 // ===== Gravity =====
 export const GRAVITY_CONSTANT = 80000;
@@ -37,7 +38,7 @@ export const GRAVITY_SHIFT_INTERVAL = 15; // seconds
 export const SHIP_CONFIGS: Record<ShipClass, ShipClassConfig> = {
   viper: {
     name: "Viper",
-    maxHp: 80,
+    maxHp: 120,
     speed: 280,
     rotationSpeed: 5.5,
     color: "#00f0ff",
@@ -47,7 +48,7 @@ export const SHIP_CONFIGS: Record<ShipClass, ShipClassConfig> = {
   },
   titan: {
     name: "Titan",
-    maxHp: 160,
+    maxHp: 220,
     speed: 150,
     rotationSpeed: 3.0,
     color: "#ff6b00",
@@ -57,7 +58,7 @@ export const SHIP_CONFIGS: Record<ShipClass, ShipClassConfig> = {
   },
   specter: {
     name: "Specter",
-    maxHp: 110,
+    maxHp: 150,
     speed: 240,
     rotationSpeed: 4.5,
     color: "#b44aff",
@@ -67,7 +68,7 @@ export const SHIP_CONFIGS: Record<ShipClass, ShipClassConfig> = {
   },
   nova: {
     name: "Nova",
-    maxHp: 110,
+    maxHp: 150,
     speed: 200,
     rotationSpeed: 4.0,
     color: "#00ff88",
@@ -211,3 +212,95 @@ export const MOD_UNLOCK_LEVELS: Record<string, number> = {
   "ghost-trail": 7,
   radar: 3,
 };
+
+// ===== Bot Difficulty Presets =====
+
+export interface BotDifficultyPreset {
+  id: string;
+  name: string;
+  description: string;
+  difficulty: number;
+  aimError: number;
+  shootDelay: number;
+  shootThreshold: number;
+  specialProbability: number;
+  circleStrafe: boolean;
+  approachDistance: number;
+  retreatDistance: number;
+  boostThreshold: number;
+}
+
+export const DIFFICULTY_PRESETS: BotDifficultyPreset[] = [
+  {
+    id: "weltraumtourist",
+    name: "Weltraumtourist",
+    description: "Weiss kaum, wo oben ist",
+    difficulty: 0.1,
+    aimError: 0.36,
+    shootDelay: 0.37,
+    shootThreshold: 0.75,
+    specialProbability: 0.1,
+    circleStrafe: false,
+    approachDistance: 500,
+    retreatDistance: 100,
+    boostThreshold: 700,
+  },
+  {
+    id: "raumkadett",
+    name: "Raumkadett",
+    description: "Hat die Ausbildung fast bestanden",
+    difficulty: 0.3,
+    aimError: 0.28,
+    shootDelay: 0.31,
+    shootThreshold: 0.65,
+    specialProbability: 0.3,
+    circleStrafe: false,
+    approachDistance: 450,
+    retreatDistance: 120,
+    boostThreshold: 650,
+  },
+  {
+    id: "kopfgeldjaeger",
+    name: "Kopfgeldjaeger",
+    description: "Nichts Persoenliches",
+    difficulty: 0.5,
+    aimError: 0.20,
+    shootDelay: 0.25,
+    shootThreshold: 0.55,
+    specialProbability: 0.5,
+    circleStrafe: true,
+    approachDistance: 400,
+    retreatDistance: 150,
+    boostThreshold: 600,
+  },
+  {
+    id: "planetenbrecher",
+    name: "Planetenbrecher",
+    description: "Macht ganze Welten platt",
+    difficulty: 0.75,
+    aimError: 0.10,
+    shootDelay: 0.175,
+    shootThreshold: 0.425,
+    specialProbability: 0.75,
+    circleStrafe: true,
+    approachDistance: 350,
+    retreatDistance: 180,
+    boostThreshold: 500,
+  },
+  {
+    id: "lebensmuede",
+    name: "Lebensmuede",
+    description: "Gnade? Nie gehoert",
+    difficulty: 0.95,
+    aimError: 0.02,
+    shootDelay: 0.115,
+    shootThreshold: 0.325,
+    specialProbability: 0.95,
+    circleStrafe: true,
+    approachDistance: 300,
+    retreatDistance: 200,
+    boostThreshold: 400,
+  },
+];
+
+export const DEFAULT_DIFFICULTY_INDEX = 2;

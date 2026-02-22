@@ -1,6 +1,7 @@
 import { GameState, PlayerInput, PlayerState } from "../../shared/types";
 import { sub, normalize, length, distance, angleDiff, vecFromAngle } from "../../shared/physics";
 import { MAPS } from "../../shared/maps";
+import { BotDifficultyPreset } from "../../shared/constants";
 
 /** Simple AI bot for single-player mode */
 export class Bot {
@@ -9,14 +10,12 @@ export class Bot {
   private currentTarget: string | null = null;
   private wanderAngle = Math.random() * Math.PI * 2;
   private specialTimer = 0;
-  private difficulty: number; // 0-1, higher = smarter
 
   constructor(
     public readonly id: string,
-    difficulty = 0.5,
-  ) {
-    this.difficulty = difficulty;
-  }
+    private preset: BotDifficultyPreset,
+  ) {}
+
 
   getInput(state: GameState): PlayerInput {
     const me = state.players[this.id];
@@ -45,52 +44,57 @@ export class Bot {
       const dirToTarget = normalize(toTarget);
       aimAngle = Math.atan2(dirToTarget.y, dirToTarget.x);
 
-      // Movement: approach if far, circle if close
-      if (dist > 400) {
+      // Movement: approach if far, circle-strafe or direct approach at mid range, retreat if close
+      if (dist > this.preset.approachDistance) {
         // Move toward target
         const moveDir = dirToTarget;
         if (moveDir.y < -0.3) up = true;
         if (moveDir.y > 0.3) down = true;
         if (moveDir.x < -0.3) left = true;
         if (moveDir.x > 0.3) right = true;
-        if (dist > 600) boost = true;
-      } else if (dist > 150) {
-        // Circle strafe
+        if (dist > this.preset.boostThreshold) boost = true;
+      } else if (dist > this.preset.retreatDistance && this.preset.circleStrafe) {
+        // Circle strafe (skilled bots only)
         const perpAngle = aimAngle + Math.PI / 2;
         const perp = vecFromAngle(perpAngle);
         if (perp.y < -0.3) up = true;
         if (perp.y > 0.3) down = true;
         if (perp.x < -0.3) left = true;
         if (perp.x > 0.3) right = true;
+      } else if (dist > this.preset.retreatDistance) {
+        // Direct approach (easy bots — no strafing)
+        const moveDir = dirToTarget;
+        if (moveDir.y < -0.3) up = true;
+        if (moveDir.y > 0.3) down = true;
+        if (moveDir.x < -0.3) left = true;
+        if (moveDir.x > 0.3) right = true;
       } else {
-        // Too close, back away (move opposite to target direction)
-        if (dirToTarget.y < -0.3) down = true;  // target is above → go down
-        if (dirToTarget.y > 0.3) up = true;     // target is below → go up
-        if (dirToTarget.x < -0.3) right = true; // target is left → go right
-        if (dirToTarget.x > 0.3) left = true;   // target is right → go left
+        // Too close, back away
+        if (dirToTarget.y < -0.3) down = true;
+        if (dirToTarget.y > 0.3) up = true;
+        if (dirToTarget.x < -0.3) right = true;
+        if (dirToTarget.x > 0.3) left = true;
       }
 
-      // Shoot when roughly aimed (with difficulty-based accuracy)
+      // Shoot when roughly aimed
       const aimError = Math.abs(angleDiff(me.rotation, aimAngle));
-      const shootThreshold = 0.3 + (1 - this.difficulty) * 0.5;
-      if (aimError < shootThreshold && dist < 600) {
-        // Add some randomness to not shoot every frame
+      if (aimError < this.preset.shootThreshold && dist < 600) {
         this.shootTimer -= 1 / 60;
         if (this.shootTimer <= 0) {
           shoot = true;
-          this.shootTimer = 0.1 + Math.random() * (1 - this.difficulty) * 0.3;
+          this.shootTimer = this.preset.shootDelay * (0.7 + Math.random() * 0.6);
         }
       }
 
       // Use special when close enough
       this.specialTimer -= 1 / 60;
       if (this.specialTimer <= 0 && dist < 300 && me.specialCooldown <= 0) {
-        special = Math.random() < this.difficulty;
+        special = Math.random() < this.preset.specialProbability;
         this.specialTimer = 2;
       }
 
-      // Add slight aim inaccuracy
-      aimAngle += (Math.random() - 0.5) * (1 - this.difficulty) * 0.4;
+      // Aim inaccuracy
+      aimAngle += (Math.random() - 0.5) * this.preset.aimError;
     } else {
       // Wander
       this.wanderAngle += (Math.random() - 0.5) * 0.1;
