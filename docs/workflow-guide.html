@@ -293,7 +293,7 @@
   </li>
   <li>
     <strong><code>/adapt-project</code></strong> — Wird automatisch von finishing-a-development-branch aufgerufen.
-    <span class="note">Scannt Architektur und aktualisiert: Test-Coverage-Tabellen, Hook-Pfade, Subagent-Scopes, CLAUDE.md, AGENTS.md. Laeuft einmalig beim ersten Branch-Abschluss.</span>
+    <span class="note">Scannt Architektur und aktualisiert: Test-Coverage-Tabellen, Hook-Pfade, Subagent-Scopes, CLAUDE.md, AGENTS.md. Smart Gate: laeuft erneut wenn neue Source-Files hinzugekommen sind.</span>
   </li>
 </ol>
 
@@ -326,6 +326,7 @@
     <tr><td><code>bun</code></td><td><code>bun init</code></td><td>Bun Runtime</td></tr>
   </tbody>
 </table>
+<p style="font-size:0.8rem;color:var(--text-dim);margin-top:0.5rem;"><strong>Multi-Stack?</strong> Das Argument steuert nur das Scaffolding (Phase 0). Fuer Projekte mit mehreren Technologien (z.B. Vite + Cloudflare Worker): Haupt-Stack scaffolden, Rest manuell hinzufuegen. Phase 1 (Detection) erkennt immer alles automatisch.</p>
 
 <!-- ===== WORKFLOW ===== -->
 <h2>Entwicklungs-Workflow (jedes Feature)</h2>
@@ -450,7 +451,7 @@
       Adapt Project Gate (einmalig) → Tests pruefen → Optionen: Merge lokal, PR erstellen, Branch behalten, oder verwerfen.
       <div class="skill-detail">
         <span class="skill-badge auto-badge">finishing-a-development-branch</span>
-        <span class="skill-how">AUTO — Triggert wenn Implementierung abgeschlossen. Fuehrt einmalig <code>/adapt-project</code> aus (wenn Coverage-Tabelle noch leer).</span>
+        <span class="skill-how">AUTO — Triggert wenn Implementierung abgeschlossen. Smart Gate: fuehrt <code>/adapt-project</code> aus wenn neue Source-Files nicht in der Coverage-Tabelle stehen.</span>
       </div>
     </div>
     <div class="trigger auto">AUTO — Skill</div>
