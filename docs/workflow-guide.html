@@ -273,17 +273,22 @@
 <h2>Projekt-Setup (einmalig)</h2>
 
 <h3>Track A: Neues Projekt (Gruene Wiese)</h3>
+<p style="font-size:0.85rem;color:var(--text-dim);margin-bottom:0.5rem;">Du brauchst nur: <code>mkdir mein-projekt && cd mein-projekt</code>. Alles andere passiert automatisch.</p>
 <ol class="setup-steps">
   <li>
-    <strong>Brainstorming</strong> — Beschreibe deine Idee in einer Claude Code Session (<code>mkdir projekt && cd projekt && git init</code> reicht als Start).
-    <span class="note">Brainstorming-Skill fragt Fragen, klaert Tech-Stack, schreibt Design-Doc. Am Ende weisst du welchen Stack du brauchst.</span>
+    <strong>Brainstorming</strong> — Beschreibe deine Idee ("Ich will eine React-App bauen die ...").
+    <span class="note">Brainstorming-Skill fragt Fragen, klaert Anforderungen, schlaegt Ansaetze vor, schreibt Design-Doc.</span>
   </li>
   <li>
-    <strong><code>/init-project &lt;stack&gt;</code></strong> — Scaffolding + Automation in einem Schritt.
-    <span class="note">Erstellt das Projekt (npm init, vite create, etc.) UND richtet alles ein: Hooks, Subagents, CI, MCP, Gitignore, PR-Template, AGENTS.md, CLAUDE.md.</span>
+    <strong>Writing Plans</strong> — Erstellt den Implementierungsplan aus dem Design-Doc.
+    <span class="note">TDD-Schritte, Dateipfade, Commit-Points. Der Plan enthaelt den Tech-Stack aus dem Brainstorming.</span>
   </li>
   <li>
-    <strong>Code schreiben</strong> — Writing Plans erstellt den Implementierungsplan, dann TDD-Zyklus.
+    <strong><code>/init-project &lt;stack&gt;</code></strong> — Wird automatisch von writing-plans aufgerufen.
+    <span class="note">Git init, Scaffolding (npm init, vite create, etc.), Hooks, Subagents, CI, MCP, Gitignore, PR-Template, AGENTS.md, CLAUDE.md. Du musst nichts tippen.</span>
+  </li>
+  <li>
+    <strong>Code schreiben</strong> — TDD-Zyklus: Test → Code → Test → Review → Commit.
     <span class="note">Alle Skills (TDD, Debugging, Code Review) und Hooks (Syntax, Commit-Warnung) sind ab sofort aktiv.</span>
   </li>
   <li>
