@@ -109,6 +109,37 @@ Menu (ship, map, mode) → Mod-Select (weapon, ship, passive, control mode)
   → Online Lobby (create/join room) → Multiplayer Game
 ```
 
+## Testing Rules
+
+### Before committing
+1. Run `npx tsc --noEmit` — must pass with zero errors
+2. Run `npm test` — all unit tests must pass
+3. Run `npm run test:e2e` — all Playwright E2E tests must pass
+
+### When to write/update tests
+- **Unit tests** (`src/shared/*.test.ts`): When changing game simulation, physics, constants, types, or mods
+  - Test new game mechanics (damage, invulnerability, movement, collisions)
+  - Test config consistency (ship→weapon→special mappings, valid ranges)
+  - Test difficulty presets and balance changes
+- **E2E tests** (`e2e/*.spec.ts`): When changing UI flow, menus, screens, or user-facing behavior
+  - Menu navigation and screen transitions
+  - Settings (difficulty, bot count, control mode)
+  - Gameplay startup and state verification
+  - Use `getTestState(page)` helper to read game state (canvas-based, no DOM queries)
+  - Use keyboard events for interaction (Enter, Escape, 1-4, Q/E, arrows, etc.)
+
+### E2E test patterns
+- Game exposes `window.__game._testState` for Playwright inspection
+- `waitForGameReady(page)` before each test
+- `waitForScreen(page, "screen-name")` for navigation assertions
+- Playwright uses port 4173 (avoid 3000-3001, those are Docker)
+
+## Deployment
+
+- `npm run deploy` deploys to Cloudflare Workers
+- Auto-deploy hook: runs automatically after every `git push` (via `.claude/hooks/deploy-after-push.js`)
+- Always deploy after pushing changes that affect the client or server
+
 ## Key Design Decisions
 - Server-authoritative: physics run on server, client sends inputs only
 - All graphics are programmatic (Canvas API) — no external image assets
