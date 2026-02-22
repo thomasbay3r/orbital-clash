@@ -221,64 +221,12 @@ function updatePlayer(
     }
   }
 
-  if (!input) return;
-
   const config = SHIP_CONFIGS[player.shipClass];
-  const weaponConfig = WEAPON_CONFIGS[config.weaponType];
-  const specialConfig = SPECIAL_CONFIGS[config.specialType];
 
-  // Rotation toward aim
-  const targetRotation = input.aimAngle;
-  const rotDiff = angleDiff(player.rotation, targetRotation);
-  const maxRot = config.rotationSpeed * dt;
-  player.rotation += clamp(rotDiff, -maxRot, maxRot);
+  // Reset per-tick flags
+  player.boostActive = false;
 
-  // Movement
-  let thrustX = 0;
-  let thrustY = 0;
-  if (input.up) thrustY -= 1;
-  if (input.down) thrustY += 1;
-  if (input.left) thrustX -= 1;
-  if (input.right) thrustX += 1;
-
-  if (thrustX !== 0 || thrustY !== 0) {
-    const thrustDir = normalize({ x: thrustX, y: thrustY });
-    let speed = config.speed;
-    if (player.mods.ship === "drift-master") speed *= 1.1;
-
-    // Boost
-    player.boostActive = false;
-    if (input.boost && player.energy > 0) {
-      const boostDuration = player.mods.ship === "afterburner" ? 1.3 : 1.0;
-      speed *= BOOST_MULTIPLIER * boostDuration;
-      const costMultiplier = player.mods.ship === "afterburner" ? 0.7 : 1.0;
-      player.energy -= BOOST_ENERGY_COST * costMultiplier * dt;
-      player.boostActive = true;
-    }
-
-    const thrust = scale(thrustDir, speed * dt);
-    player.velocity = add(player.velocity, thrust);
-
-    // Spawn engine particles
-    const backDir = vecFromAngle(player.rotation + Math.PI);
-    spawnParticle(state, {
-      position: add(player.position, scale(backDir, config.collisionRadius)),
-      velocity: add(scale(backDir, 80 + Math.random() * 40), scale(player.velocity, 0.3)),
-      color: config.color,
-      size: 2 + Math.random() * 2,
-      lifetime: 0.3 + Math.random() * 0.2,
-      maxLifetime: 0.5,
-      alpha: 0.8,
-    });
-  }
-
-  // Energy regen
-  if (!player.boostActive) {
-    const regenRate = player.mods.ship === "afterburner"
-      ? ENERGY_REGEN_RATE * 0.6
-      : ENERGY_REGEN_RATE;
-    player.energy = Math.min(player.maxEnergy, player.energy + regenRate * dt);
-  }
+  // === Physics (always applied, regardless of input) ===
 
   // Friction
   let friction = DRIFT_FRICTION;
@@ -295,38 +243,66 @@ function updatePlayer(
   );
   player.velocity = add(player.velocity, scale(gravityVel, gravityMultiplier));
 
-  // Apply velocity
-  player.position = add(player.position, scale(player.velocity, dt));
-
-  // Arena bounds
-  const map = MAPS[state.mapId];
-  const bounced = reflectVelocity(
-    player.position,
-    player.velocity,
-    config.collisionRadius,
-    map.width,
-    map.height,
-  );
-  player.position = bounced.pos;
-  player.velocity = bounced.vel;
-
-  // Asteroid collisions
-  for (const asteroid of state.asteroids) {
-    if (circleCircle(player.position, config.collisionRadius, asteroid.position, asteroid.radius)) {
-      // Push player out
-      const dir = normalize(sub(player.position, asteroid.position));
-      const overlap = config.collisionRadius + asteroid.radius - distance(player.position, asteroid.position);
-      player.position = add(player.position, scale(dir, overlap));
-      // Bounce velocity
-      const velDot = player.velocity.x * dir.x + player.velocity.y * dir.y;
-      if (velDot < 0) {
-        player.velocity = sub(player.velocity, scale(dir, velDot * 1.5));
-      }
-    }
+  // Energy regen (always happens when not boosting)
+  if (!player.boostActive) {
+    const regenRate = player.mods.ship === "afterburner"
+      ? ENERGY_REGEN_RATE * 0.6
+      : ENERGY_REGEN_RATE;
+    player.energy = Math.min(player.maxEnergy, player.energy + regenRate * dt);
   }
 
-  // Shooting
-  if (input.shoot && player.shootCooldown <= 0 && !player.phaseActive) {
+  // === Input-dependent actions ===
+  if (input) {
+    const weaponConfig = WEAPON_CONFIGS[config.weaponType];
+    const specialConfig = SPECIAL_CONFIGS[config.specialType];
+
+    // Rotation toward aim
+    const targetRotation = input.aimAngle;
+    const rotDiff = angleDiff(player.rotation, targetRotation);
+    const maxRot = config.rotationSpeed * dt;
+    player.rotation += clamp(rotDiff, -maxRot, maxRot);
+
+    // Movement
+    let thrustX = 0;
+    let thrustY = 0;
+    if (input.up) thrustY -= 1;
+    if (input.down) thrustY += 1;
+    if (input.left) thrustX -= 1;
+    if (input.right) thrustX += 1;
+
+    if (thrustX !== 0 || thrustY !== 0) {
+      const thrustDir = normalize({ x: thrustX, y: thrustY });
+      let speed = config.speed;
+      if (player.mods.ship === "drift-master") speed *= 1.1;
+
+      // Boost
+      player.boostActive = false;
+      if (input.boost && player.energy > 0) {
+        const boostDuration = player.mods.ship === "afterburner" ? 1.3 : 1.0;
+        speed *= BOOST_MULTIPLIER * boostDuration;
+        const costMultiplier = player.mods.ship === "afterburner" ? 0.7 : 1.0;
+        player.energy -= BOOST_ENERGY_COST * costMultiplier * dt;
+        player.boostActive = true;
+      }
+
+      const thrust = scale(thrustDir, speed * dt);
+      player.velocity = add(player.velocity, thrust);
+
+      // Spawn engine particles
+      const backDir = vecFromAngle(player.rotation + Math.PI);
+      spawnParticle(state, {
+        position: add(player.position, scale(backDir, config.collisionRadius)),
+        velocity: add(scale(backDir, 80 + Math.random() * 40), scale(player.velocity, 0.3)),
+        color: config.color,
+        size: 2 + Math.random() * 2,
+        lifetime: 0.3 + Math.random() * 0.2,
+        maxLifetime: 0.5,
+        alpha: 0.8,
+      });
+    }
+
+    // Shooting
+    if (input.shoot && player.shootCooldown <= 0 && !player.phaseActive) {
     const fireRate = player.mods.weapon === "rapid-fire"
       ? weaponConfig.fireRate * 1.4
       : weaponConfig.fireRate;
@@ -369,9 +345,42 @@ function updatePlayer(
     spawnMuzzleFlash(state, player.position, player.rotation, config.color);
   }
 
-  // Special ability
-  if (input.special && player.specialCooldown <= 0 && !player.specialActive) {
-    activateSpecial(state, player, specialConfig, config);
+    // Special ability
+    if (input.special && player.specialCooldown <= 0 && !player.specialActive) {
+      activateSpecial(state, player, specialConfig, config);
+    }
+  } // end if (input)
+
+  // === Position update (always applied) ===
+
+  // Apply velocity
+  player.position = add(player.position, scale(player.velocity, dt));
+
+  // Arena bounds
+  const map = MAPS[state.mapId];
+  const bounced = reflectVelocity(
+    player.position,
+    player.velocity,
+    config.collisionRadius,
+    map.width,
+    map.height,
+  );
+  player.position = bounced.pos;
+  player.velocity = bounced.vel;
+
+  // Asteroid collisions
+  for (const asteroid of state.asteroids) {
+    if (circleCircle(player.position, config.collisionRadius, asteroid.position, asteroid.radius)) {
+      // Push player out
+      const dir = normalize(sub(player.position, asteroid.position));
+      const overlap = config.collisionRadius + asteroid.radius - distance(player.position, asteroid.position);
+      player.position = add(player.position, scale(dir, overlap));
+      // Bounce velocity
+      const velDot = player.velocity.x * dir.x + player.velocity.y * dir.y;
+      if (velDot < 0) {
+        player.velocity = sub(player.velocity, scale(dir, velDot * 1.5));
+      }
+    }
   }
 
   // Ghost trail passive
