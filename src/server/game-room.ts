@@ -1,23 +1,25 @@
-import { ClientMessage, ServerMessage, GameState, PlayerState, GravityWell } from "../shared/types";
-import { ARENA_WIDTH, ARENA_HEIGHT, TICK_RATE, TICK_DURATION } from "../shared/constants";
+import { ClientMessage, ServerMessage, PlayerInput, ShipClass, ModLoadout } from "../shared/types";
+import { TICK_DURATION } from "../shared/constants";
+import {
+  createGameState, addPlayer, removePlayer, simulateTick,
+} from "../shared/game-simulation";
 
 interface Session {
   webSocket: WebSocket;
   playerId: string;
   name: string;
+  latestInput: PlayerInput | null;
 }
 
 export class GameRoom implements DurableObject {
   private sessions: Map<WebSocket, Session> = new Map();
-  private gameState: GameState;
+  private gameState = createGameState("deathmatch", "nebula-station");
   private gameLoopInterval: ReturnType<typeof setInterval> | null = null;
 
   constructor(
     private state: DurableObjectState,
-    private env: unknown,
-  ) {
-    this.gameState = this.createInitialState();
-  }
+    _env: unknown,
+  ) {}
 
   async fetch(request: Request): Promise<Response> {
     const upgradeHeader = request.headers.get("Upgrade");
@@ -38,10 +40,10 @@ export class GameRoom implements DurableObject {
 
     switch (data.type) {
       case "join":
-        this.handleJoin(ws, data.name, data.shipClass);
+        this.handleJoin(ws, data.name, data.shipClass, data.mods);
         break;
       case "input":
-        // TODO: Process player input
+        this.handleInput(ws, data.input);
         break;
       case "leave":
         this.handleLeave(ws);
@@ -57,29 +59,17 @@ export class GameRoom implements DurableObject {
     this.handleLeave(ws);
   }
 
-  private handleJoin(ws: WebSocket, name: string, shipClass: string): void {
+  private handleJoin(
+    ws: WebSocket,
+    name: string,
+    shipClass: ShipClass,
+    mods: ModLoadout,
+  ): void {
     const playerId = crypto.randomUUID().slice(0, 8);
 
-    this.sessions.set(ws, { webSocket: ws, playerId, name });
+    this.sessions.set(ws, { webSocket: ws, playerId, name, latestInput: null });
 
-    const player: PlayerState = {
-      id: playerId,
-      name,
-      shipClass: shipClass as PlayerState["shipClass"],
-      position: {
-        x: Math.random() * ARENA_WIDTH,
-        y: Math.random() * ARENA_HEIGHT,
-      },
-      velocity: { x: 0, y: 0 },
-      rotation: 0,
-      hp: 100,
-      maxHp: 100,
-      energy: 100,
-      score: 0,
-      alive: true,
-    };
-
-    this.gameState.players[playerId] = player;
+    addPlayer(this.gameState, playerId, name, shipClass, mods);
 
     const joinMsg: ServerMessage = { type: "joined", playerId };
     ws.send(JSON.stringify(joinMsg));
@@ -89,10 +79,17 @@ export class GameRoom implements DurableObject {
     }
   }
 
+  private handleInput(ws: WebSocket, input: PlayerInput): void {
+    const session = this.sessions.get(ws);
+    if (session) {
+      session.latestInput = input;
+    }
+  }
+
   private handleLeave(ws: WebSocket): void {
     const session = this.sessions.get(ws);
     if (session) {
-      delete this.gameState.players[session.playerId];
+      removePlayer(this.gameState, session.playerId);
       this.sessions.delete(ws);
     }
 
@@ -103,9 +100,17 @@ export class GameRoom implements DurableObject {
   }
 
   private startGameLoop(): void {
+    const dt = TICK_DURATION / 1000;
     this.gameLoopInterval = setInterval(() => {
-      this.gameState.tick++;
-      // TODO: Physics update, collision detection, etc.
+      // Collect inputs from all sessions
+      const inputs: Record<string, PlayerInput> = {};
+      for (const session of this.sessions.values()) {
+        if (session.latestInput) {
+          inputs[session.playerId] = session.latestInput;
+        }
+      }
+
+      simulateTick(this.gameState, inputs, dt);
       this.broadcastState();
     }, TICK_DURATION);
   }
@@ -116,20 +121,5 @@ export class GameRoom implements DurableObject {
     for (const session of this.sessions.values()) {
       session.webSocket.send(data);
     }
-  }
-
-  private createInitialState(): GameState {
-    const gravityWells: GravityWell[] = [
-      { id: "gw1", position: { x: ARENA_WIDTH * 0.3, y: ARENA_HEIGHT * 0.5 }, strength: 1, radius: 150 },
-      { id: "gw2", position: { x: ARENA_WIDTH * 0.7, y: ARENA_HEIGHT * 0.5 }, strength: 1, radius: 150 },
-    ];
-
-    return {
-      tick: 0,
-      players: {},
-      projectiles: [],
-      gravityWells,
-      timeRemaining: 120,
-    };
   }
 }

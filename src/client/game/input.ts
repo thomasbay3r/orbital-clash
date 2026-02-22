@@ -8,9 +8,19 @@ export class InputHandler {
   private rightMouseDown = false;
   private tick = 0;
 
+  // Menu callbacks
+  onKeyPress: ((key: string) => void) | null = null;
+
   constructor(canvas: HTMLCanvasElement) {
-    window.addEventListener("keydown", (e) => this.keys.add(e.key.toLowerCase()));
-    window.addEventListener("keyup", (e) => this.keys.delete(e.key.toLowerCase()));
+    window.addEventListener("keydown", (e) => {
+      const key = e.key.toLowerCase();
+      this.keys.add(key);
+      if (this.onKeyPress) this.onKeyPress(key);
+    });
+
+    window.addEventListener("keyup", (e) => {
+      this.keys.delete(e.key.toLowerCase());
+    });
 
     canvas.addEventListener("mousemove", (e) => {
       this.mouseX = e.clientX;
@@ -47,5 +57,9 @@ export class InputHandler {
       aimAngle,
       tick: this.tick++,
     };
+  }
+
+  isKeyDown(key: string): boolean {
+    return this.keys.has(key);
   }
 }

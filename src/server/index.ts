@@ -33,7 +33,7 @@ export default {
   },
 };
 
-async function handleApi(url: URL, request: Request, env: Env): Promise<Response> {
+async function handleApi(url: URL, request: Request, _env: Env): Promise<Response> {
   const path = url.pathname.replace("/api", "");
 
   if (path === "/health") {

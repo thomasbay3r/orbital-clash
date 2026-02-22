@@ -1,22 +1,48 @@
+// ===== Core Types =====
+
+export interface Vec2 {
+  x: number;
+  y: number;
+}
+
 // ===== Ship Classes =====
 
 export type ShipClass = "viper" | "titan" | "specter" | "nova";
 
-export interface ShipConfig {
-  class: ShipClass;
-  hp: number;
+export interface ShipClassConfig {
+  name: string;
   maxHp: number;
   speed: number;
   rotationSpeed: number;
   color: string;
+  weaponType: WeaponType;
+  specialType: SpecialType;
+  collisionRadius: number;
 }
 
-export const SHIP_CONFIGS: Record<ShipClass, Omit<ShipConfig, "hp">> = {
-  viper: { class: "viper", maxHp: 80, speed: 280, rotationSpeed: 5, color: "#00f0ff" },
-  titan: { class: "titan", maxHp: 160, speed: 150, rotationSpeed: 3, color: "#ff6b00" },
-  specter: { class: "specter", maxHp: 110, speed: 240, rotationSpeed: 4.2, color: "#b44aff" },
-  nova: { class: "nova", maxHp: 110, speed: 200, rotationSpeed: 4, color: "#00ff88" },
-};
+// ===== Weapons =====
+
+export type WeaponType = "dual-shot" | "heavy-shot" | "homing-missile" | "spread-shot";
+export type SpecialType = "phase-dash" | "shield-bubble" | "emp-pulse" | "gravity-bomb";
+
+export interface WeaponConfig {
+  damage: number;
+  speed: number;
+  fireRate: number; // shots per second
+  projectileCount: number;
+  spreadAngle: number; // radians, for spread weapons
+  projectileRadius: number;
+  projectileLifetime: number; // ms
+  homing: boolean;
+  homingStrength: number;
+}
+
+export interface SpecialConfig {
+  cooldown: number; // ms
+  duration: number; // ms
+  radius: number;
+  damage: number;
+}
 
 // ===== Mods =====
 
@@ -30,12 +56,7 @@ export interface ModLoadout {
   passive: PassiveMod;
 }
 
-// ===== Game State =====
-
-export interface Vec2 {
-  x: number;
-  y: number;
-}
+// ===== Game Entities =====
 
 export interface PlayerState {
   id: string;
@@ -47,8 +68,25 @@ export interface PlayerState {
   hp: number;
   maxHp: number;
   energy: number;
+  maxEnergy: number;
   score: number;
+  eliminations: number;
+  deaths: number;
   alive: boolean;
+  respawnTimer: number;
+  shootCooldown: number;
+  specialCooldown: number;
+  specialActive: boolean;
+  specialTimer: number;
+  boostActive: boolean;
+  mods: ModLoadout;
+  // Passive mod state
+  consecutiveHits: number; // for overcharge
+  // Phase dash state
+  phaseActive: boolean;
+  // Shield bubble state
+  shieldActive: boolean;
+  shieldHp: number;
 }
 
 export interface Projectile {
@@ -58,6 +96,13 @@ export interface Projectile {
   velocity: Vec2;
   damage: number;
   lifetime: number;
+  radius: number;
+  piercing: boolean;
+  ricochet: boolean;
+  gravitySynced: boolean;
+  homing: boolean;
+  homingStrength: number;
+  hitEntities: string[]; // for piercing - track what we've hit
 }
 
 export interface GravityWell {
@@ -65,14 +110,79 @@ export interface GravityWell {
   position: Vec2;
   strength: number;
   radius: number;
+  isTemporary: boolean;
+  lifetime: number;
 }
+
+export interface Asteroid {
+  id: string;
+  position: Vec2;
+  radius: number;
+  rotation: number;
+  rotationSpeed: number;
+  vertices: Vec2[]; // polygon shape
+}
+
+export interface Pickup {
+  id: string;
+  position: Vec2;
+  type: "health";
+  value: number;
+  lifetime: number;
+}
+
+export interface KothZone {
+  position: Vec2;
+  radius: number;
+  owner: string | null;
+  captureProgress: Record<string, number>;
+}
+
+// ===== Particle Effects =====
+
+export interface Particle {
+  position: Vec2;
+  velocity: Vec2;
+  color: string;
+  size: number;
+  lifetime: number;
+  maxLifetime: number;
+  alpha: number;
+}
+
+// ===== Map =====
+
+export type MapId = "nebula-station" | "asteroid-belt" | "the-singularity";
+
+export interface MapConfig {
+  id: MapId;
+  name: string;
+  width: number;
+  height: number;
+  gravityWells: Omit<GravityWell, "isTemporary" | "lifetime">[];
+  asteroids: Omit<Asteroid, "rotation" | "rotationSpeed">[];
+  spawnPoints: Vec2[];
+}
+
+// ===== Game State =====
+
+export type GameMode = "deathmatch" | "king-of-the-asteroid" | "gravity-shift" | "duel";
 
 export interface GameState {
   tick: number;
   players: Record<string, PlayerState>;
   projectiles: Projectile[];
   gravityWells: GravityWell[];
-  timeRemaining: number;
+  asteroids: Asteroid[];
+  pickups: Pickup[];
+  particles: Particle[];
+  timeRemaining: number; // seconds
+  gameMode: GameMode;
+  mapId: MapId;
+  kothZone: KothZone | null;
+  kothScores: Record<string, number>;
+  gameOver: boolean;
+  winnerId: string | null;
 }
 
 // ===== Input / Network =====
@@ -89,12 +199,10 @@ export interface PlayerInput {
   tick: number;
 }
 
-export type GameMode = "deathmatch" | "king-of-the-asteroid" | "gravity-shift" | "duel";
-
 // ===== Network Messages =====
 
 export type ClientMessage =
-  | { type: "join"; name: string; shipClass: ShipClass }
+  | { type: "join"; name: string; shipClass: ShipClass; mods: ModLoadout }
   | { type: "input"; input: PlayerInput }
   | { type: "leave" };
 
@@ -102,5 +210,48 @@ export type ServerMessage =
   | { type: "state"; state: GameState }
   | { type: "joined"; playerId: string }
   | { type: "countdown"; seconds: number }
-  | { type: "game-over"; scores: Record<string, number> }
+  | { type: "game-over"; scores: Record<string, number>; winnerId: string | null }
+  | { type: "kill"; killerId: string; victimId: string }
   | { type: "error"; message: string };
+
+// ===== Progression =====
+
+export type Rank = "bronze" | "silver" | "gold" | "platinum" | "diamond";
+
+export interface PlayerProfile {
+  id: string;
+  username: string;
+  xp: number;
+  level: number;
+  rank: Rank;
+  wins: number;
+  losses: number;
+  eliminations: number;
+  unlockedMods: string[];
+  unlockedCosmetics: string[];
+  selectedSkin: Record<ShipClass, string>;
+}
+
+// ===== Cosmetics =====
+
+export interface SkinConfig {
+  id: string;
+  name: string;
+  shipClass: ShipClass;
+  color: string;
+  trailColor: string;
+  unlockLevel: number;
+}
+
+export interface TitleConfig {
+  id: string;
+  name: string;
+  unlockLevel: number;
+}
+
+export interface ExplosionEffect {
+  id: string;
+  name: string;
+  colors: string[];
+  unlockLevel: number;
+}
