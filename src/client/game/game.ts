@@ -687,6 +687,42 @@ export class Game {
         this.isOnline = false;
         this.screen = "mod-select";
       }
+    } else if (this.screen === "profile") {
+      const hit = this.hitTestLocal(mx, my);
+      if (!hit) return;
+      if (hit === "btn-challenges") this.screen = "challenges";
+      if (hit === "btn-cosmetics") { this.cosmeticCategory = 0; this.screen = "cosmetics"; }
+      if (hit === "btn-profile-back") this.screen = "menu";
+      if (hit === "btn-logout") { this.api.logout(); this.currentUser = null; this.screen = "menu"; }
+    } else if (this.screen === "post-game") {
+      const hit = this.hitTestLocal(mx, my);
+      if (!hit) return;
+      if (hit === "btn-play-again") {
+        if (this.isOnline) {
+          this.connection.send({ type: "rematch-vote" });
+        } else {
+          this.startLocalGame();
+        }
+      }
+      if (hit === "btn-to-menu") this.returnToMenu();
+    } else if (this.screen === "login") {
+      const hit = this.hitTestLocal(mx, my);
+      if (!hit) return;
+      if (hit === "btn-do-login") this.doLogin();
+      if (hit === "btn-to-register") {
+        this.textInputFields = { email: "", username: "", password: "", password2: "" };
+        this.textInputActive = "email";
+        this.textInputError = "";
+        this.screen = "register";
+      }
+      if (hit === "btn-login-back") this.screen = "menu";
+      if (hit?.startsWith("field-")) this.textInputActive = hit.slice(6);
+    } else if (this.screen === "register") {
+      const hit = this.hitTestLocal(mx, my);
+      if (!hit) return;
+      if (hit === "btn-do-register") this.doRegister();
+      if (hit === "btn-register-back") this.screen = "login";
+      if (hit?.startsWith("field-")) this.textInputActive = hit.slice(6);
     } else if (this.screen === "playing" && this.isOnline && this.activeRoomCode) {
       const w = window.innerWidth;
       if (mx >= w - 160 && mx <= w - 10 && my >= 42 && my <= 68) {
@@ -1622,6 +1658,9 @@ export class Game {
     const ctx = this.canvas.getContext("2d")!;
     const w = this.canvas.width = window.innerWidth;
     const h = this.canvas.height = window.innerHeight;
+    this.menuClickRegions = [];
+    const mx = this.input.getMouseX();
+    const my = this.input.getMouseY();
 
     ctx.fillStyle = COLORS.background;
     ctx.fillRect(0, 0, w, h);
@@ -1680,9 +1719,8 @@ export class Game {
     ctx.fillText(`+${this.postGameData.xpGained} XP`, w / 2, xpY);
 
     // Buttons
-    ctx.font = "16px monospace";
-    ctx.fillStyle = COLORS.ui;
-    ctx.fillText("[Enter/N] Nochmal!     [Esc/M] Hauptmenue", w / 2, xpY + 50);
+    this.drawMenuButton(ctx, w / 2 - 120, xpY + 50, 180, 40, "Nochmal!", COLORS.ui, "btn-play-again", mx, my);
+    this.drawMenuButton(ctx, w / 2 + 120, xpY + 50, 180, 40, "Hauptmenue", COLORS.uiDim, "btn-to-menu", mx, my);
   }
 
   private drawFriends(): void {
@@ -1787,6 +1825,9 @@ export class Game {
     const ctx = this.canvas.getContext("2d")!;
     const w = this.canvas.width = window.innerWidth;
     const h = this.canvas.height = window.innerHeight;
+    this.menuClickRegions = [];
+    const mx = this.input.getMouseX();
+    const my = this.input.getMouseY();
 
     ctx.fillStyle = COLORS.background;
     ctx.fillRect(0, 0, w, h);
@@ -1809,10 +1850,11 @@ export class Game {
     }
 
     // Buttons
-    ctx.font = "16px monospace";
-    ctx.fillStyle = COLORS.ui;
-    ctx.fillText("[Enter] Anmelden  |  [R] Registrieren  |  [Esc] Zurueck", w / 2, 340);
+    this.drawMenuButton(ctx, w / 2 - 160, 340, 160, 38, "Anmelden", COLORS.ui, "btn-do-login", mx, my);
+    this.drawMenuButton(ctx, w / 2, 340, 160, 38, "Registrieren", COLORS.nova, "btn-to-register", mx, my);
+    this.drawMenuButton(ctx, w / 2 + 160, 340, 130, 38, "Zurueck", COLORS.uiDim, "btn-login-back", mx, my);
     ctx.font = "12px monospace";
+    ctx.textAlign = "center";
     ctx.fillStyle = COLORS.uiDim;
     ctx.fillText("Klicke auf ein Feld und tippe den Wert ein. Tab = naechstes Feld.", w / 2, 380);
   }
@@ -1821,6 +1863,9 @@ export class Game {
     const ctx = this.canvas.getContext("2d")!;
     const w = this.canvas.width = window.innerWidth;
     const h = this.canvas.height = window.innerHeight;
+    this.menuClickRegions = [];
+    const mx = this.input.getMouseX();
+    const my = this.input.getMouseY();
 
     ctx.fillStyle = COLORS.background;
     ctx.fillRect(0, 0, w, h);
@@ -1841,9 +1886,8 @@ export class Game {
       ctx.fillText(this.textInputError, w / 2, 410);
     }
 
-    ctx.font = "16px monospace";
-    ctx.fillStyle = COLORS.ui;
-    ctx.fillText("[Enter] Registrieren  |  [Esc] Zurueck", w / 2, 460);
+    this.drawMenuButton(ctx, w / 2 - 90, 460, 180, 38, "Registrieren", COLORS.ui, "btn-do-register", mx, my);
+    this.drawMenuButton(ctx, w / 2 + 90, 460, 130, 38, "Zurueck", COLORS.uiDim, "btn-register-back", mx, my);
 
     if (this.api.isGuest) {
       ctx.font = "12px monospace";
@@ -1856,6 +1900,9 @@ export class Game {
     const ctx = this.canvas.getContext("2d")!;
     const w = this.canvas.width = window.innerWidth;
     const h = this.canvas.height = window.innerHeight;
+    this.menuClickRegions = [];
+    const mx = this.input.getMouseX();
+    const my = this.input.getMouseY();
 
     ctx.fillStyle = COLORS.background;
     ctx.fillRect(0, 0, w, h);
@@ -1896,13 +1943,16 @@ export class Game {
       ctx.fillText("Registriere dich um Freunde hinzuzufuegen und Cosmetics freizuschalten!", w / 2, 330);
     }
 
-    ctx.font = "14px monospace";
-    ctx.fillStyle = COLORS.uiDim;
-    const profileHints = ["[C] Herausforderungen  |  [K] Cosmetics  |  [Esc] Zurueck"];
+    // Navigation buttons
+    let btnX = w / 2 - 200;
+    this.drawMenuButton(ctx, btnX, 380, 190, 38, "Herausforderungen", COLORS.ui, "btn-challenges", mx, my);
+    btnX += 200;
+    this.drawMenuButton(ctx, btnX, 380, 130, 38, "Cosmetics", COLORS.nova, "btn-cosmetics", mx, my);
+    btnX += 165;
+    this.drawMenuButton(ctx, btnX, 380, 120, 38, "Zurueck", COLORS.uiDim, "btn-profile-back", mx, my);
     if (this.api.isAccount) {
-      profileHints.push("[L] Abmelden");
+      this.drawMenuButton(ctx, w / 2, 430, 140, 36, "Abmelden", COLORS.gravityWell, "btn-logout", mx, my);
     }
-    ctx.fillText(profileHints.join("  |  "), w / 2, 380);
   }
 
   private drawMatchmaking(): void {
@@ -1954,16 +2004,8 @@ export class Game {
     const cursor = isActive && Math.sin(performance.now() / 300) > 0 ? "_" : "";
     ctx.fillText(displayValue + cursor, cx, y + 5);
 
-    // Make field clickable
-    if (!this.textInputActive || this.textInputActive !== fieldName) {
-      // Simple: click on field area to activate
-      const mx = this.input.getMouseX();
-      const my = this.input.getMouseY();
-      if (mx >= cx - 150 && mx <= cx + 150 && my >= y - 15 && my <= y + 15) {
-        // Detect click in handleMenuClick would be needed, but for keyboard flow:
-        // Just allow Tab to navigate between fields
-      }
-    }
+    // Register click region so handleMenuClick can activate this field
+    this.menuClickRegions.push({ x: cx - 150, y: y - 15, width: 300, height: 30, id: `field-${fieldName}` });
   }
 
   // ===== Challenges & Cosmetics Screens =====
