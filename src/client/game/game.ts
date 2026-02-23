@@ -642,6 +642,15 @@ export class Game {
           this.screen = "login";
         }
       }
+      if (hit === "button-quickplay") this.startQuickPlay();
+      if (hit === "button-friends") {
+        if (this.api.isAccount) {
+          this.loadFriends();
+          this.screen = "friends";
+        } else {
+          this.textInputError = "Freunde nur mit Konto verfuegbar";
+        }
+      }
     } else if (this.screen === "mod-select") {
       const hit = this.hitTestLocal(mx, my);
       if (!hit) return;
@@ -1667,12 +1676,11 @@ export class Game {
       ctx.fillText(`${this.currentUser.displayName} (Lvl ${this.currentUser.level})`, w - 20, 20);
     }
 
-    // Keyboard hints at bottom
-    ctx.font = "12px monospace";
+    // Keyboard shortcut hints at bottom
+    ctx.font = "11px monospace";
     ctx.textAlign = "center";
-    ctx.fillStyle = "#555555";
-    const hints = "Space = Quick Play  |  F = Freunde  |  P = Profil";
-    ctx.fillText(hints, w / 2, ctx.canvas.height - 15);
+    ctx.fillStyle = "#444444";
+    ctx.fillText("Space / F / P = Tastenkuerzel", w / 2, ctx.canvas.height - 15);
 
     // Error message
     if (this.textInputError) {

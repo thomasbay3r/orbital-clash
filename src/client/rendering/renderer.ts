@@ -1169,6 +1169,10 @@ export class Renderer {
       this.drawButton(ctx, w / 2, 710, 200, 32, accountLabel, "#ffaa00", "button-account", hoveredId);
     }
 
+    // Quick Play + Friends buttons
+    this.drawButton(ctx, w / 2 - 110, 755, 180, 28, "Quick Play", COLORS.uiDim, "button-quickplay", hoveredId);
+    this.drawButton(ctx, w / 2 + 110, 755, 140, 28, "Freunde", COLORS.uiDim, "button-friends", hoveredId);
+
     // Controls
     ctx.font = "12px monospace";
     ctx.fillStyle = COLORS.uiDim;
