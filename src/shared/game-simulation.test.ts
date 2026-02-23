@@ -881,24 +881,14 @@ describe("Kill Feed", () => {
   });
 
   it("should record kill event when player is eliminated", () => {
-    // One-shot the victim
     state.players["p2"].hp = 1;
-    // Create a projectile from p1 aimed at p2
     state.players["p2"].position = { x: 400, y: 300 };
     state.projectiles.push({
-      id: "proj1",
-      ownerId: "p1",
-      position: { x: 400, y: 300 },
-      velocity: { x: 0, y: 0 },
-      damage: 10,
-      lifetime: 2,
-      radius: 5,
-      ricochetCount: 0,
-      homing: false,
-      homingTarget: null,
-      gravitySynced: false,
-      piercing: false,
-      hitPlayerIds: [],
+      id: "proj1", ownerId: "p1",
+      position: { x: 400, y: 300 }, velocity: { x: 0, y: 0 },
+      damage: 10, lifetime: 2, radius: 5,
+      ricochet: false, homing: false, homingStrength: 0,
+      gravitySynced: false, piercing: false, hitEntities: [],
     });
     simulateTick(state, {}, 1 / 60);
 
@@ -910,12 +900,10 @@ describe("Kill Feed", () => {
   });
 
   it("should record gravity-well kill type for self-kills", () => {
-    // Place player inside a strong gravity well to die
     state.players["p1"].hp = 1;
     const well = state.gravityWells[0];
     state.players["p1"].position = { x: well.position.x, y: well.position.y };
 
-    // Simulate enough ticks for gravity damage to kill
     for (let i = 0; i < 120; i++) {
       simulateTick(state, {}, 1 / 60);
       if (!state.players["p1"].alive) break;
@@ -929,15 +917,14 @@ describe("Kill Feed", () => {
   });
 
   it("should accumulate multiple kill events", () => {
-    // Kill p2 twice (respawn in between)
     state.players["p2"].hp = 1;
     state.players["p2"].position = { x: 400, y: 300 };
     state.projectiles.push({
       id: "proj1", ownerId: "p1",
       position: { x: 400, y: 300 }, velocity: { x: 0, y: 0 },
-      damage: 10, lifetime: 2, radius: 5, ricochetCount: 0,
-      homing: false, homingTarget: null, gravitySynced: false,
-      piercing: false, hitPlayerIds: [],
+      damage: 10, lifetime: 2, radius: 5,
+      ricochet: false, homing: false, homingStrength: 0,
+      gravitySynced: false, piercing: false, hitEntities: [],
     });
     simulateTick(state, {}, 1 / 60);
     expect(state.killFeed.length).toBe(1);
@@ -945,14 +932,15 @@ describe("Kill Feed", () => {
     // Respawn p2 and kill again
     state.players["p2"].alive = true;
     state.players["p2"].hp = 1;
-    state.players["p2"].invulnTimer = 0;
+    state.players["p2"].invulnerabilityTimer = 0;
+    state.players["p2"].invulnerable = false;
     state.players["p2"].position = { x: 400, y: 300 };
     state.projectiles.push({
       id: "proj2", ownerId: "p1",
       position: { x: 400, y: 300 }, velocity: { x: 0, y: 0 },
-      damage: 10, lifetime: 2, radius: 5, ricochetCount: 0,
-      homing: false, homingTarget: null, gravitySynced: false,
-      piercing: false, hitPlayerIds: [],
+      damage: 10, lifetime: 2, radius: 5,
+      ricochet: false, homing: false, homingStrength: 0,
+      gravitySynced: false, piercing: false, hitEntities: [],
     });
     simulateTick(state, {}, 1 / 60);
     expect(state.killFeed.length).toBe(2);
@@ -978,8 +966,8 @@ describe("Player Stats Tracking", () => {
 
   it("should track shots fired", () => {
     const input = makeInput({ shoot: true, aimAngle: 0 });
-    // Clear invuln so shooting works normally
-    state.players["p1"].invulnTimer = 0;
+    state.players["p1"].invulnerabilityTimer = 0;
+    state.players["p1"].invulnerable = false;
     simulateTick(state, { p1: input }, 1 / 60);
 
     expect(state.playerStats["p1"].shotsFired).toBeGreaterThan(0);
@@ -987,14 +975,14 @@ describe("Player Stats Tracking", () => {
 
   it("should track shots hit on target", () => {
     state.players["p2"].position = { x: 400, y: 300 };
-    state.players["p2"].invulnTimer = 0;
-    // Place projectile right on target
+    state.players["p2"].invulnerabilityTimer = 0;
+    state.players["p2"].invulnerable = false;
     state.projectiles.push({
       id: "proj1", ownerId: "p1",
       position: { x: 400, y: 300 }, velocity: { x: 0, y: 0 },
-      damage: 10, lifetime: 2, radius: 5, ricochetCount: 0,
-      homing: false, homingTarget: null, gravitySynced: false,
-      piercing: false, hitPlayerIds: [],
+      damage: 10, lifetime: 2, radius: 5,
+      ricochet: false, homing: false, homingStrength: 0,
+      gravitySynced: false, piercing: false, hitEntities: [],
     });
     simulateTick(state, {}, 1 / 60);
 
@@ -1004,13 +992,14 @@ describe("Player Stats Tracking", () => {
   it("should track damage dealt", () => {
     const initialHp = state.players["p2"].hp;
     state.players["p2"].position = { x: 400, y: 300 };
-    state.players["p2"].invulnTimer = 0;
+    state.players["p2"].invulnerabilityTimer = 0;
+    state.players["p2"].invulnerable = false;
     state.projectiles.push({
       id: "proj1", ownerId: "p1",
       position: { x: 400, y: 300 }, velocity: { x: 0, y: 0 },
-      damage: 15, lifetime: 2, radius: 5, ricochetCount: 0,
-      homing: false, homingTarget: null, gravitySynced: false,
-      piercing: false, hitPlayerIds: [],
+      damage: 15, lifetime: 2, radius: 5,
+      ricochet: false, homing: false, homingStrength: 0,
+      gravitySynced: false, piercing: false, hitEntities: [],
     });
     simulateTick(state, {}, 1 / 60);
 
@@ -1019,16 +1008,16 @@ describe("Player Stats Tracking", () => {
   });
 
   it("should track gravity kills", () => {
-    // p1 shoots p2 with a gravity-synced projectile that kills
     state.players["p2"].hp = 1;
     state.players["p2"].position = { x: 400, y: 300 };
-    state.players["p2"].invulnTimer = 0;
+    state.players["p2"].invulnerabilityTimer = 0;
+    state.players["p2"].invulnerable = false;
     state.projectiles.push({
       id: "proj1", ownerId: "p1",
       position: { x: 400, y: 300 }, velocity: { x: 0, y: 0 },
-      damage: 10, lifetime: 2, radius: 5, ricochetCount: 0,
-      homing: false, homingTarget: null, gravitySynced: true,
-      piercing: false, hitPlayerIds: [],
+      damage: 10, lifetime: 2, radius: 5,
+      ricochet: false, homing: false, homingStrength: 0,
+      gravitySynced: true, piercing: false, hitEntities: [],
     });
     simulateTick(state, {}, 1 / 60);
 

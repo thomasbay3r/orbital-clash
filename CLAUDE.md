@@ -15,7 +15,7 @@ src/
   client/
     main.ts              # Entry point
     game/
-      game.ts            # Main game orchestrator (menus, lobby, settings, play)
+      game.ts            # Main game orchestrator (menus, lobby, social, play)
       input.ts           # Keyboard/mouse input handler
       bot.ts             # AI bot with difficulty presets
     rendering/
@@ -23,24 +23,30 @@ src/
     audio/
       audio-manager.ts   # Programmatic sound effects
     network/
+      api.ts             # REST API client (auth, friends, presence, matchmaking)
       connection.ts      # WebSocket client for multiplayer
   server/
-    index.ts             # Worker entry: API routes, auth, matchmaking
-    game-room.ts         # Durable Object: real-time game room
-    schema.sql           # D1 database schema
+    index.ts             # Worker entry: API routes, auth, friends, matchmaking
+    game-room.ts         # Durable Object: real-time game room (chat, kill feed, rematch)
+    schema.sql           # D1 database schema (accounts, friends, matches, etc.)
+    email.ts             # Resend API helper for password reset emails
+    guest-names.ts       # Space-themed guest name generator
   shared/
-    types.ts             # All TypeScript types
+    types.ts             # All TypeScript types (game, social, auth)
     constants.ts         # Game config (ships, weapons, specials, mods, difficulty presets)
     physics.ts           # Vector math, gravity, collision detection
     maps.ts              # Map definitions (3 maps)
     game-simulation.ts   # Core game simulation engine (shared client/server)
     physics.test.ts      # Physics tests
-    game-simulation.test.ts  # Simulation tests
+    game-simulation.test.ts  # Simulation tests (59 tests)
     mods.test.ts         # Mod/mode/map tests
+  server/
+    guest-names.test.ts  # Guest name generator tests
 e2e/
   helpers.ts             # E2E test utilities (getTestState, waitForScreen)
-  menu-flow.spec.ts      # Menu navigation E2E tests (16 tests)
-  gameplay.spec.ts       # Gameplay E2E tests (11 tests)
+  menu-flow.spec.ts      # Menu navigation E2E tests (20 tests)
+  gameplay.spec.ts       # Gameplay E2E tests (16 tests)
+  social-screens.spec.ts # Social screen navigation E2E tests (9 tests)
 public/
   index.html             # HTML entry point with canvas
 ```
@@ -97,16 +103,35 @@ The core game loop (`game-simulation.ts`) is shared between client and server.
 - Room code display in lobby and HUD with copy-to-clipboard
 - Room create/join via REST API, game via WebSocket
 
-### Accounts & Progression
-- PBKDF2 password hashing, token-based auth
+### Accounts & Auth
+- Dual auth: guest sessions (auto-created) + full accounts (email/username/password)
+- PBKDF2 password hashing, token-based auth (base64 JSON + SHA-256 hash, 7-day expiry)
+- Password reset via Resend email API
+- Guest-to-account migration preserves progress
 - XP, levels, ranks (bronze through diamond)
-- Mod/cosmetic unlock system via D1 database
+
+### Social Features
+- **Friends**: Add/remove, search by username, recent players, online presence
+- **Presence**: KV-based polling (120s TTL heartbeat, 30s client interval)
+- **Invites**: KV-based with 60s expiry, in-game banner notifications
+- **Chat**: In-game chat overlay (T to open), 200 char limit, broadcast via GameRoom DO
+- **Kill Feed**: Real-time HUD with kill types (normal, ricochet, homing, gravity-well, emp)
+- **Combo/Killstreak**: Client-side tracking with announcements (Doppelkill, Triplekill, etc.)
+- **Post-Game**: Scoreboard with stats, XP gained, rematch voting (majority threshold)
+- **Matchmaking**: Stateless queue via KV, 30s bot-fill timeout
+
+### KV Namespaces
+- `KV` binding for presence, matchmaking queue, and invites
 
 ## Menu Flow
 ```
 Menu (ship, map, mode) → Mod-Select (weapon, ship, passive, control mode)
   → Settings (difficulty, bot count) → Local Game
   → Online Lobby (create/join room) → Multiplayer Game
+Additional screens (from menu):
+  F → Friends (account only)  |  P → Profile  |  L → Login/Register
+  Space → Quick Play (matchmaking)
+Post-game: Scoreboard → Enter=Rematch  |  Esc=Menu
 ```
 
 ## Testing Rules

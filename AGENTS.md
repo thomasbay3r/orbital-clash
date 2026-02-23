@@ -9,9 +9,9 @@ Orbital Clash ist ein Top-Down-Multiplayer-Weltraumspiel mit Schwerkraft-Mechani
 
 ## 1) Projektkontext (kurz)
 
-- Stack: **TypeScript + HTML5 Canvas + Vite** (Client), **Cloudflare Workers + Durable Objects + D1** (Server).
-- Persistenz: **Cloudflare D1** (Accounts, Progression), **Durable Objects** (Game Rooms).
-- Ziel: Echtzeit-Multiplayer-Spiel mit Server-autoritativem Gameplay und geteilter Simulation.
+- Stack: **TypeScript + HTML5 Canvas + Vite** (Client), **Cloudflare Workers + Durable Objects + D1 + KV** (Server).
+- Persistenz: **Cloudflare D1** (Accounts, Progression, Friends, Matches), **KV** (Presence, Invites, Matchmaking), **Durable Objects** (Game Rooms).
+- Ziel: Echtzeit-Multiplayer-Spiel mit Server-autoritativem Gameplay, Social-Features und geteilter Simulation.
 
 ## 2) Grundprinzipien
 
@@ -19,8 +19,8 @@ Orbital Clash ist ein Top-Down-Multiplayer-Weltraumspiel mit Schwerkraft-Mechani
 2. **Ursache-orientiert fixen** (nicht nur Symptome patchen).
 3. **Bestehende Struktur respektieren**:
    - Shared Logic: `src/shared/` (Simulation, Physics, Constants, Types, Maps)
-   - Client: `src/client/` (Game, Rendering, Audio, Network, Input)
-   - Server: `src/server/` (Worker, Game Room, Schema)
+   - Client: `src/client/` (Game, Rendering, Audio, Network/API, Input)
+   - Server: `src/server/` (Worker, Game Room, Schema, Email, Guest Names)
 4. **Geteilte Simulation**: `game-simulation.ts` wird von Client UND Server genutzt — Aenderungen hier betreffen beides.
 
 ## 3) Konkreter Arbeitsablauf pro Aenderung
@@ -61,8 +61,9 @@ Folgende Module sind stark an Browser-/Runtime-APIs gebunden und werden primaer 
 - `src/client/audio/audio-manager.ts` — Web Audio API
 - `src/client/game/input.ts` — Browser Event API
 - `src/client/network/connection.ts` — WebSocket API
-- `src/server/index.ts` — Cloudflare Worker Runtime
-- `src/server/game-room.ts` — Durable Objects Runtime
+- `src/client/network/api.ts` — REST API Client (Auth, Friends, Presence, Matchmaking)
+- `src/server/index.ts` — Cloudflare Worker Runtime (API Routes, Auth, Friends, Matchmaking)
+- `src/server/game-room.ts` — Durable Objects Runtime (Chat, Kill Feed, Rematch)
 
 Testbare reine Logik:
 - `src/shared/physics.ts` — Vektormathe, Gravitation, Kollision
