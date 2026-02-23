@@ -1,6 +1,7 @@
 import {
   GameState, PlayerState, PlayerInput, Projectile, GravityWell,
   Particle, ShipClass, ModLoadout, GameMode, MapId, Vec2, KothZone, ControlMode,
+  KillType,
 } from "./types";
 import {
   SHIP_CONFIGS, WEAPON_CONFIGS, SPECIAL_CONFIGS,
@@ -64,6 +65,8 @@ export function createGameState(mode: GameMode, mapId: MapId): GameState {
     kothScores: {},
     gameOver: false,
     winnerId: null,
+    killFeed: [],
+    playerStats: {},
   };
 }
 
@@ -120,6 +123,12 @@ export function addPlayer(
     invulnerabilityTimer: 0,
   };
   state.kothScores[id] = 0;
+  state.playerStats[id] = {
+    damageDealt: 0,
+    shotsFired: 0,
+    shotsHit: 0,
+    gravityKills: 0,
+  };
 }
 
 export function removePlayer(state: GameState, id: string): void {
@@ -379,6 +388,11 @@ function updatePlayer(
       state.projectiles.push(proj);
     }
 
+    // Track shots fired
+    if (state.playerStats[player.id]) {
+      state.playerStats[player.id].shotsFired += weaponConfig.projectileCount;
+    }
+
     // Muzzle flash particles
     spawnMuzzleFlash(state, player.position, player.rotation, config.color);
   }
@@ -481,7 +495,7 @@ function activateSpecial(
         if (distance(player.position, target.position) < specialConfig.radius) {
           target.energy = 0;
           target.specialCooldown = Math.max(target.specialCooldown, 3);
-          dealDamage(state, target, player, specialConfig.damage);
+          dealDamage(state, target, player, specialConfig.damage, "emp");
         }
       }
       // EMP visual ring
@@ -656,7 +670,17 @@ function checkProjectileCollisions(state: GameState): void {
           spawnHitParticles(state, proj.position, "#44aaff", 6);
         } else {
           const owner = state.players[proj.ownerId];
-          dealDamage(state, player, owner, proj.damage);
+          // Determine kill type from projectile properties
+          const projKillType: KillType = proj.ricochet ? "ricochet"
+            : proj.homing ? "homing"
+            : proj.gravitySynced ? "gravity-well"
+            : "normal";
+          dealDamage(state, player, owner, proj.damage, projKillType);
+
+          // Track shots hit
+          if (owner && state.playerStats[owner.id]) {
+            state.playerStats[owner.id].shotsHit++;
+          }
 
           // Overcharge tracking
           if (owner && owner.mods.passive === "overcharge") {
@@ -685,6 +709,7 @@ function dealDamage(
   target: PlayerState,
   attacker: PlayerState | undefined,
   damage: number,
+  killType: KillType = "normal",
 ): void {
   // Overcharge bonus
   if (attacker && attacker.mods.passive === "overcharge" && attacker.consecutiveHits >= 3) {
@@ -695,8 +720,13 @@ function dealDamage(
   target.hp -= damage;
   spawnHitParticles(state, target.position, SHIP_CONFIGS[target.shipClass].color, 8);
 
+  // Track damage stats
+  if (attacker && state.playerStats[attacker.id]) {
+    state.playerStats[attacker.id].damageDealt += damage;
+  }
+
   if (target.hp <= 0) {
-    killPlayer(state, target, attacker);
+    killPlayer(state, target, attacker, killType);
   }
 }
 
@@ -704,6 +734,7 @@ function killPlayer(
   state: GameState,
   victim: PlayerState,
   killer: PlayerState | undefined,
+  killType: KillType = "normal",
 ): void {
   victim.alive = false;
   victim.hp = 0;
@@ -718,6 +749,21 @@ function killPlayer(
     killer.score += 1;
     killer.eliminations++;
 
+    // Track gravity kills
+    if (killType === "gravity-well" && state.playerStats[killer.id]) {
+      state.playerStats[killer.id].gravityKills++;
+    }
+
+    // Record kill event
+    state.killFeed.push({
+      killerId: killer.id,
+      killerName: killer.name,
+      victimId: victim.id,
+      victimName: victim.name,
+      killType,
+      timestamp: state.tick,
+    });
+
     // Scavenger passive - drop health pickup
     if (killer.mods.passive === "scavenger") {
       state.pickups.push({
@@ -728,6 +774,16 @@ function killPlayer(
         lifetime: 8,
       });
     }
+  } else {
+    // Self-kill or environment kill
+    state.killFeed.push({
+      killerId: victim.id,
+      killerName: victim.name,
+      victimId: victim.id,
+      victimName: victim.name,
+      killType: killType === "normal" ? "gravity-well" : killType,
+      timestamp: state.tick,
+    });
   }
 
   // Explosion particles
@@ -741,7 +797,7 @@ function checkGravityWellDamage(state: GameState, dt: number): void {
       if (distance(player.position, well.position) < GRAVITY_DAMAGE_RADIUS) {
         player.hp -= GRAVITY_DAMAGE * dt;
         if (player.hp <= 0) {
-          killPlayer(state, player, undefined);
+          killPlayer(state, player, undefined, "gravity-well");
         }
       }
     }

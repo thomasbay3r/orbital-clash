@@ -174,6 +174,19 @@ export type ControlMode = "absolute" | "ship-relative";
 
 export type GameMode = "deathmatch" | "king-of-the-asteroid" | "gravity-shift" | "duel";
 
+// ===== Kill Feed Types =====
+
+export type KillType = "normal" | "gravity-well" | "ricochet" | "homing" | "melee" | "emp";
+
+export interface KillEvent {
+  killerId: string;
+  killerName: string;
+  victimId: string;
+  victimName: string;
+  killType: KillType;
+  timestamp: number;
+}
+
 export interface GameState {
   tick: number;
   players: Record<string, PlayerState>;
@@ -189,6 +202,13 @@ export interface GameState {
   kothScores: Record<string, number>;
   gameOver: boolean;
   winnerId: string | null;
+  killFeed: KillEvent[];
+  playerStats: Record<string, {
+    damageDealt: number;
+    shotsFired: number;
+    shotsHit: number;
+    gravityKills: number;
+  }>;
 }
 
 // ===== Input / Network =====
@@ -210,15 +230,20 @@ export interface PlayerInput {
 export type ClientMessage =
   | { type: "join"; name: string; shipClass: ShipClass; mods: ModLoadout; controlMode?: ControlMode }
   | { type: "input"; input: PlayerInput }
-  | { type: "leave" };
+  | { type: "leave" }
+  | { type: "chat"; text: string }
+  | { type: "rematch-vote" };
 
 export type ServerMessage =
   | { type: "state"; state: GameState }
   | { type: "joined"; playerId: string }
   | { type: "countdown"; seconds: number }
   | { type: "game-over"; scores: Record<string, number>; winnerId: string | null }
-  | { type: "kill"; killerId: string; victimId: string }
-  | { type: "error"; message: string };
+  | { type: "kill"; event: KillEvent }
+  | { type: "error"; message: string }
+  | { type: "chat"; message: ChatMessage }
+  | { type: "post-game"; data: PostGameData }
+  | { type: "rematch"; votes: number; needed: number };
 
 // ===== Progression =====
 
@@ -260,4 +285,140 @@ export interface ExplosionEffect {
   name: string;
   colors: string[];
   unlockLevel: number;
+}
+
+// ===== Account & Auth Types =====
+
+export interface Account {
+  id: string;
+  username: string;
+  email: string;
+  xp: number;
+  level: number;
+  rank: Rank;
+  wins: number;
+  losses: number;
+  eliminations: number;
+  totalGames: number;
+  equippedSkin: string;
+  equippedTrail: string;
+  equippedKillEffect: string;
+  equippedTitle: string;
+  equippedBadge: string;
+  equippedEmotes: string[];
+}
+
+export interface GuestSession {
+  id: string;
+  displayName: string;
+  token: string;
+  xp: number;
+  level: number;
+}
+
+export interface AuthUser {
+  type: "account" | "guest";
+  id: string;
+  displayName: string;
+  level: number;
+}
+
+// ===== Social Types =====
+
+export type PresenceStatus = "online-menu" | "online-ingame" | "offline";
+
+export interface FriendInfo {
+  id: string;
+  username: string;
+  level: number;
+  rank: Rank;
+  presence: PresenceStatus;
+  roomId?: string;
+  equippedTitle: string;
+  equippedBadge: string;
+}
+
+export interface FriendRequest {
+  id: string;
+  fromId: string;
+  fromUsername: string;
+  toId: string;
+  toUsername: string;
+  createdAt: string;
+  status: "pending" | "accepted" | "rejected";
+}
+
+export interface PartyMember {
+  id: string;
+  displayName: string;
+  level: number;
+  ready: boolean;
+  isLeader: boolean;
+}
+
+export interface PartyState {
+  id: string;
+  members: PartyMember[];
+  leaderId: string;
+  selectedMode: GameMode;
+  selectedMap: MapId;
+  chatMessages: ChatMessage[];
+}
+
+export interface ChatMessage {
+  id: string;
+  senderId: string;
+  senderName: string;
+  text: string;
+  timestamp: number;
+}
+
+export interface Invite {
+  fromId: string;
+  fromName: string;
+  roomId?: string;
+  partyId?: string;
+  expiresAt: number;
+}
+
+// ===== Matchmaking Types =====
+
+export interface QueueEntry {
+  playerId: string;
+  playerName: string;
+  shipClass: ShipClass;
+  mods: ModLoadout;
+  controlMode: ControlMode;
+  partyId?: string;
+  joinedAt: number;
+}
+
+export interface MatchResult {
+  matchId: string;
+  mode: GameMode;
+  map: MapId;
+  duration: number;
+  players: MatchPlayerResult[];
+  winnerId: string | null;
+}
+
+export interface MatchPlayerResult {
+  id: string;
+  name: string;
+  shipClass: ShipClass;
+  score: number;
+  eliminations: number;
+  deaths: number;
+  damageDealt: number;
+  accuracy: number;
+  gravityKills: number;
+}
+
+// ===== Post-Game Types =====
+
+export interface PostGameData {
+  matchResult: MatchResult;
+  xpGained: number;
+  newLevel: number | null;
+  challengeProgress: { challengeId: string; progress: number; target: number; completed: boolean }[];
 }
