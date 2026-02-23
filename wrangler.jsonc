@@ -31,6 +31,14 @@
     }
   ],
 
+  // KV namespace for presence, matchmaking queue, and invites
+  "kv_namespaces": [
+    {
+      "binding": "KV",
+      "id": "8812ad718bdd47dd87339433bb88f128"
+    }
+  ],
+
   // Static assets (client build)
   "assets": {
     "directory": "dist"
