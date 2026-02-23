@@ -3,9 +3,11 @@ import { InputHandler } from "./input";
 import { AudioManager } from "../audio/audio-manager";
 import { Bot } from "./bot";
 import { Connection } from "../network/connection";
+import { ApiClient } from "../network/api";
 import {
   GameState, ShipClass, GameMode, MapId, ModLoadout,
   PlayerInput, ServerMessage, ControlMode, PlayerState, Vec2,
+  AuthUser, KillEvent, PostGameData, ChatMessage, FriendInfo, FriendRequest, Invite,
 } from "../../shared/types";
 import {
   createGameState, addPlayer, simulateTick,
@@ -20,7 +22,8 @@ import {
 } from "../../shared/physics";
 import { MAPS } from "../../shared/maps";
 
-type Screen = "menu" | "mod-select" | "settings" | "playing" | "online-lobby";
+type Screen = "menu" | "mod-select" | "settings" | "playing" | "online-lobby"
+  | "friends" | "login" | "register" | "profile" | "post-game" | "matchmaking";
 
 const SHIP_OPTIONS: ShipClass[] = ["viper", "titan", "specter", "nova"];
 const MAP_OPTIONS: MapId[] = ["nebula-station", "asteroid-belt", "the-singularity"];
@@ -35,6 +38,7 @@ export class Game {
   private input: InputHandler;
   private audio: AudioManager;
   private connection: Connection;
+  private api: ApiClient;
 
   private screen: Screen = "menu";
   private lastTime = 0;
@@ -62,12 +66,12 @@ export class Game {
   private localPlayerId = "local-player";
   private bots: Bot[] = [];
   private isOnline = false;
-  private onlineFlow = false; // true when navigating menus toward multiplayer
+  private onlineFlow = false;
 
   // Online lobby state
   private roomCodeInput = "";
   private lobbyStatus = "";
-  private activeRoomCode = ""; // room code shown during gameplay
+  private activeRoomCode = "";
   private playerName = "Player";
   private connectionCheckInterval: ReturnType<typeof setInterval> | null = null;
   private copiedFeedbackTimer = 0;
@@ -80,11 +84,54 @@ export class Game {
   private prevAliveStates: Record<string, boolean> = {};
   private prevPlayerHps: Record<string, number> = {};
 
+  // Social state
+  private currentUser: AuthUser | null = null;
+  private friends: FriendInfo[] = [];
+  private friendRequests: { incoming: FriendRequest[]; outgoing: FriendRequest[] } = { incoming: [], outgoing: [] };
+  private invites: Invite[] = [];
+  private heartbeatInterval: ReturnType<typeof setInterval> | null = null;
+  private inviteCheckInterval: ReturnType<typeof setInterval> | null = null;
+
+  // Kill feed
+  private killFeed: KillEvent[] = [];
+  private killFeedTimers: number[] = [];
+  private lastKillFeedIndex = 0;
+  private comboCounter = 0;
+  private comboTimer = 0;
+  private killStreak = 0;
+  private announcement = "";
+  private announcementTimer = 0;
+
+  // Post-game
+  private postGameData: PostGameData | null = null;
+
+  // Chat
+  private chatOpen = false;
+  private chatInput = "";
+  private chatMessages: ChatMessage[] = [];
+
+  // Matchmaking
+  private matchmakingTimer = 0;
+  private matchmakingPollInterval: ReturnType<typeof setInterval> | null = null;
+  private matchmakingPlayersInQueue = 0;
+
+  // Text input (for login, register, friends search)
+  private textInputActive: string | null = null;
+  private textInputFields: Record<string, string> = {};
+  private textInputError = "";
+  private textInputMessage = "";
+
+  // Friends screen state
+  private friendsSelectedIndex = 0;
+  private friendsSearchMode = false;
+  private friendsRequestsMode = false;
+
   constructor(private canvas: HTMLCanvasElement) {
     this.renderer = new Renderer(canvas);
     this.input = new InputHandler(canvas);
     this.audio = new AudioManager();
     this.connection = new Connection();
+    this.api = new ApiClient();
 
     this.input.onKeyPress = (key) => this.handleKeyPress(key);
     this.input.onMouseClick = (mx, my) => this.handleMenuClick(mx, my);
@@ -97,6 +144,18 @@ export class Game {
   start(): void {
     this.running = true;
     this.lastTime = performance.now();
+
+    // Auto-init guest if not logged in (non-blocking for local play)
+    if (this.api.isLoggedIn) {
+      this.api.getMe().then((user) => {
+        this.currentUser = user;
+        this.playerName = user.displayName;
+      }).catch(() => {});
+    }
+
+    this.startHeartbeat();
+    this.startInviteCheck();
+
     requestAnimationFrame((t) => this.loop(t));
   }
 
@@ -112,7 +171,33 @@ export class Game {
       selectedBotCount: this.selectedBotCount,
       isOnline: this.isOnline,
       gameState: this.gameState,
+      currentUser: this.currentUser,
+      killFeed: this.killFeed,
+      postGameData: this.postGameData,
     };
+  }
+
+  private startHeartbeat(): void {
+    this.heartbeatInterval = setInterval(() => {
+      if (!this.api.isLoggedIn) return;
+      const status = this.screen === "playing" ? "online-ingame" : "online-menu";
+      this.api.heartbeat(status, this.activeRoomCode || undefined).catch(() => {});
+    }, 30_000);
+  }
+
+  private startInviteCheck(): void {
+    this.inviteCheckInterval = setInterval(() => {
+      if (!this.api.isAccount) return;
+      this.api.getInvites().then((invites) => {
+        this.invites = invites;
+      }).catch(() => {});
+    }, 10_000);
+  }
+
+  destroy(): void {
+    this.running = false;
+    if (this.heartbeatInterval) clearInterval(this.heartbeatInterval);
+    if (this.inviteCheckInterval) clearInterval(this.inviteCheckInterval);
   }
 
   private loop(time: number): void {
@@ -121,6 +206,20 @@ export class Game {
     const dt = Math.min((time - this.lastTime) / 1000, 0.05);
     this.lastTime = time;
     if (this.copiedFeedbackTimer > 0) this.copiedFeedbackTimer -= dt;
+    if (this.announcementTimer > 0) this.announcementTimer -= dt;
+    if (this.comboTimer > 0) {
+      this.comboTimer -= dt;
+      if (this.comboTimer <= 0) this.comboCounter = 0;
+    }
+
+    // Expire old kill feed entries
+    for (let i = this.killFeedTimers.length - 1; i >= 0; i--) {
+      this.killFeedTimers[i] -= dt;
+      if (this.killFeedTimers[i] <= 0) {
+        this.killFeed.splice(i, 1);
+        this.killFeedTimers.splice(i, 1);
+      }
+    }
 
     const mx = this.input.getMouseX();
     const my = this.input.getMouseY();
@@ -129,6 +228,7 @@ export class Game {
       case "menu": {
         const hovered = this.renderer.hitTest(mx, my);
         this.renderer.drawMenu(this.selectedShip, this.selectedMap, this.selectedMode, hovered);
+        this.drawMenuOverlay(mx, my);
         break;
       }
       case "mod-select":
@@ -143,15 +243,48 @@ export class Game {
       case "playing":
         this.updateGame(dt);
         break;
+      case "post-game":
+        this.drawPostGame();
+        break;
+      case "friends":
+        this.drawFriends();
+        break;
+      case "login":
+        this.drawLogin();
+        break;
+      case "register":
+        this.drawRegister();
+        break;
+      case "profile":
+        this.drawProfile();
+        break;
+      case "matchmaking":
+        this.matchmakingTimer += dt;
+        this.drawMatchmaking();
+        break;
     }
 
     requestAnimationFrame((t) => this.loop(t));
   }
 
+  // ===== Key Press Handler =====
+
   private handleKeyPress(key: string): void {
     if (!this.audioInitialized) {
       this.audio.init();
       this.audioInitialized = true;
+    }
+
+    // Text input mode: capture all keys
+    if (this.textInputActive) {
+      this.handleTextInput(key);
+      return;
+    }
+
+    // Chat input mode during gameplay
+    if (this.chatOpen) {
+      this.handleChatInput(key);
+      return;
     }
 
     if (this.screen === "menu") {
@@ -169,6 +302,23 @@ export class Game {
       if (key === "m") {
         this.onlineFlow = true;
         this.screen = "mod-select";
+      }
+      if (key === "f") {
+        if (this.api.isAccount) {
+          this.loadFriends();
+          this.screen = "friends";
+        } else {
+          this.textInputError = "Freunde nur mit Konto verfuegbar";
+        }
+      }
+      if (key === "p") this.screen = "profile";
+      if (key === "l" && !this.api.isAccount) {
+        this.textInputFields = {};
+        this.textInputError = "";
+        this.screen = "login";
+      }
+      if (key === " ") {
+        this.startQuickPlay();
       }
     } else if (this.screen === "mod-select") {
       if (key === "1" || key === "2" || key === "3" || key === "4") {
@@ -241,18 +391,129 @@ export class Game {
         this.roomCodeInput += key;
       }
     } else if (this.screen === "playing") {
-      if (key === "enter" && this.gameState?.gameOver) {
-        if (this.isOnline) {
-          this.connection.disconnect();
-        }
-        this.screen = "menu";
-        this.gameState = null;
-        this.bots = [];
-        this.isOnline = false;
-        this.onlineFlow = false;
-        this.activeRoomCode = "";
-        this.remoteTargets = {};
+      if (key === "t" && !this.gameState?.gameOver) {
+        this.chatOpen = true;
+        this.chatInput = "";
+        return;
       }
+      if (key === "enter" && this.gameState?.gameOver) {
+        this.transitionToPostGame();
+      }
+    } else if (this.screen === "post-game") {
+      if (key === "enter" || key === "n") {
+        // Nochmal
+        if (this.isOnline) {
+          this.connection.send({ type: "rematch-vote" });
+        } else {
+          this.startLocalGame();
+        }
+      }
+      if (key === "escape" || key === "m") {
+        this.returnToMenu();
+      }
+    } else if (this.screen === "friends") {
+      if (key === "escape") {
+        this.friendsSearchMode = false;
+        this.friendsRequestsMode = false;
+        this.screen = "menu";
+      }
+      if (key === "arrowup") this.friendsSelectedIndex = Math.max(0, this.friendsSelectedIndex - 1);
+      if (key === "arrowdown") this.friendsSelectedIndex = Math.min(this.friends.length - 1, this.friendsSelectedIndex + 1);
+      if (key === "s") {
+        this.friendsSearchMode = true;
+        this.textInputFields = { search: "" };
+        this.textInputActive = "search";
+      }
+      if (key === "a") this.friendsRequestsMode = !this.friendsRequestsMode;
+    } else if (this.screen === "login") {
+      if (key === "escape") this.screen = "menu";
+      if (key === "tab" || key === "enter") {
+        if (!this.textInputActive) {
+          this.textInputActive = "email";
+        } else if (this.textInputActive === "email") {
+          this.textInputActive = "password";
+        } else if (this.textInputActive === "password") {
+          this.doLogin();
+        }
+      }
+      if (key === "r") {
+        this.textInputFields = {};
+        this.textInputError = "";
+        this.screen = "register";
+      }
+    } else if (this.screen === "register") {
+      if (key === "escape") this.screen = "login";
+    } else if (this.screen === "profile") {
+      if (key === "escape") this.screen = "menu";
+      if (key === "l" && this.api.isAccount) {
+        this.api.logout();
+        this.currentUser = null;
+        this.screen = "menu";
+      }
+    } else if (this.screen === "matchmaking") {
+      if (key === "escape") {
+        this.cancelMatchmaking();
+        this.screen = "menu";
+      }
+    }
+  }
+
+  private handleTextInput(key: string): void {
+    if (!this.textInputActive) return;
+    const field = this.textInputActive;
+
+    if (key === "escape") {
+      this.textInputActive = null;
+      return;
+    }
+    if (key === "backspace") {
+      this.textInputFields[field] = (this.textInputFields[field] || "").slice(0, -1);
+      return;
+    }
+    if (key === "tab") {
+      // Move to next field
+      const fields = Object.keys(this.textInputFields);
+      const idx = fields.indexOf(field);
+      if (idx < fields.length - 1) {
+        this.textInputActive = fields[idx + 1];
+      } else {
+        this.textInputActive = null;
+      }
+      return;
+    }
+    if (key === "enter") {
+      if (this.screen === "login") this.doLogin();
+      else if (this.screen === "register") this.doRegister();
+      else if (this.friendsSearchMode) this.doFriendSearch();
+      this.textInputActive = null;
+      return;
+    }
+    if (key.length === 1) {
+      this.textInputFields[field] = (this.textInputFields[field] || "") + key;
+    }
+  }
+
+  private handleChatInput(key: string): void {
+    if (key === "escape") {
+      this.chatOpen = false;
+      return;
+    }
+    if (key === "enter") {
+      if (this.chatInput.trim()) {
+        if (this.isOnline) {
+          this.connection.send({ type: "chat", text: this.chatInput.trim() });
+        }
+      }
+      this.chatOpen = false;
+      this.chatInput = "";
+      return;
+    }
+    if (key === "backspace") {
+      this.chatInput = this.chatInput.slice(0, -1);
+      return;
+    }
+    if (key.length === 1) {
+      this.chatInput += key;
     }
   }
 
@@ -315,7 +576,6 @@ export class Game {
         this.screen = "mod-select";
       }
     } else if (this.screen === "playing" && this.isOnline && this.activeRoomCode) {
-      // Copy room code from HUD (top right area)
       const w = window.innerWidth;
       if (mx >= w - 160 && mx <= w - 10 && my >= 42 && my <= 68) {
         this.copyRoomCode();
@@ -350,6 +610,203 @@ export class Game {
     };
   }
 
+  // ===== Auth Actions =====
+
+  private async doLogin(): Promise<void> {
+    const email = this.textInputFields["email"] || "";
+    const password = this.textInputFields["password"] || "";
+    if (!email || !password) { this.textInputError = "Bitte alle Felder ausfuellen"; return; }
+
+    try {
+      this.currentUser = await this.api.login(email, password);
+      this.playerName = this.currentUser.displayName;
+      this.textInputError = "";
+      this.screen = "menu";
+    } catch (e: any) {
+      this.textInputError = e.message || "Anmeldung fehlgeschlagen";
+    }
+  }
+
+  private async doRegister(): Promise<void> {
+    const email = this.textInputFields["email"] || "";
+    const username = this.textInputFields["username"] || "";
+    const password = this.textInputFields["password"] || "";
+    const password2 = this.textInputFields["password2"] || "";
+    if (!email || !username || !password) { this.textInputError = "Bitte alle Felder ausfuellen"; return; }
+    if (password !== password2) { this.textInputError = "Passwoerter stimmen nicht ueberein"; return; }
+    if (password.length < 6) { this.textInputError = "Passwort muss mindestens 6 Zeichen haben"; return; }
+
+    try {
+      this.currentUser = await this.api.register(email, username, password);
+      this.playerName = this.currentUser.displayName;
+      this.textInputError = "";
+      this.screen = "menu";
+    } catch (e: any) {
+      this.textInputError = e.message || "Registrierung fehlgeschlagen";
+    }
+  }
+
+  // ===== Friends =====
+
+  private async loadFriends(): Promise<void> {
+    if (!this.api.isAccount) return;
+    try {
+      this.friends = await this.api.getFriends();
+      this.friendRequests = await this.api.getFriendRequests();
+    } catch { /* offline */ }
+  }
+
+  private async doFriendSearch(): Promise<void> {
+    const q = this.textInputFields["search"] || "";
+    if (q.length < 2) return;
+    try {
+      // Search results shown as a simple overlay; for now reuse textInputMessage
+      const results = await this.api.searchUsers(q);
+      if (results.length === 0) {
+        this.textInputMessage = "Kein Benutzer gefunden";
+      } else {
+        // Send request to first result for simplicity
+        await this.api.sendFriendRequest(results[0].username);
+        this.textInputMessage = `Anfrage an ${results[0].username} gesendet!`;
+      }
+    } catch (e: any) {
+      this.textInputError = e.message || "Suche fehlgeschlagen";
+    }
+  }
+
+  // ===== Quick Play =====
+
+  private async startQuickPlay(): Promise<void> {
+    if (!this.api.isLoggedIn) {
+      // Auto-init guest for quick play
+      try {
+        this.currentUser = await this.api.initGuest();
+        this.playerName = this.currentUser.displayName;
+      } catch {
+        this.textInputError = "Verbindung fehlgeschlagen";
+        return;
+      }
+    }
+
+    this.screen = "matchmaking";
+    this.matchmakingTimer = 0;
+    this.matchmakingPlayersInQueue = 0;
+
+    const ship = SHIP_OPTIONS[this.selectedShip];
+    const mods = this.getMods();
+    const controlMode = CONTROL_MODE_OPTIONS[this.selectedControlMode];
+
+    try {
+      const result = await this.api.joinQueue(ship, mods, controlMode);
+      if (result.status === "matched" && result.roomId) {
+        this.joinRoom(result.roomId);
+        return;
+      }
+    } catch {
+      // Server not available — fall back to local game with bots after timeout
+    }
+
+    // Poll for match
+    this.matchmakingPollInterval = setInterval(async () => {
+      try {
+        const status = await this.api.getQueueStatus();
+        this.matchmakingPlayersInQueue = status.playersInQueue || 0;
+        if (status.status === "matched" && status.roomId) {
+          this.cancelMatchmaking();
+          this.joinRoom(status.roomId);
+        }
+      } catch {
+        // Server offline — will timeout to bot game
+      }
+
+      // After 30s without match, start local game with bots
+      if (this.matchmakingTimer > 30 && this.screen === "matchmaking") {
+        this.cancelMatchmaking();
+        this.startLocalGame();
+      }
+    }, 2000);
+  }
+
+  private cancelMatchmaking(): void {
+    if (this.matchmakingPollInterval) {
+      clearInterval(this.matchmakingPollInterval);
+      this.matchmakingPollInterval = null;
+    }
+    this.api.leaveQueue().catch(() => {});
+  }
+
+  // ===== Post-Game =====
+
+  private transitionToPostGame(): void {
+    if (!this.gameState) return;
+
+    if (this.isOnline) {
+      // Post-game data comes from server via handleServerMessage
+      this.connection.disconnect();
+    } else {
+      // Generate local post-game data
+      this.postGameData = this.generateLocalPostGame();
+    }
+
+    this.screen = "post-game";
+  }
+
+  private generateLocalPostGame(): PostGameData {
+    if (!this.gameState) {
+      return { matchResult: { matchId: "", mode: "deathmatch", map: "nebula-station", duration: 0, players: [], winnerId: null }, xpGained: 0, newLevel: null, challengeProgress: [] };
+    }
+
+    const players = Object.values(this.gameState.players).map((p) => {
+      const stats = this.gameState!.playerStats[p.id];
+      return {
+        id: p.id, name: p.name, shipClass: p.shipClass,
+        score: p.score, eliminations: p.eliminations, deaths: p.deaths,
+        damageDealt: stats?.damageDealt ?? 0,
+        accuracy: stats && stats.shotsFired > 0
+          ? Math.round((stats.shotsHit / stats.shotsFired) * 100) : 0,
+        gravityKills: stats?.gravityKills ?? 0,
+      };
+    }).sort((a, b) => b.score - a.score);
+
+    const localStats = this.gameState.playerStats[this.localPlayerId];
+    const xpGained = 50 + (localStats?.shotsHit ?? 0) * 2 +
+      (this.gameState.winnerId === this.localPlayerId ? 20 : 0);
+
+    return {
+      matchResult: {
+        matchId: crypto.randomUUID?.()?.slice(0, 8) ?? "local",
+        mode: this.gameState.gameMode,
+        map: this.gameState.mapId,
+        duration: Math.round(this.gameState.tick / 60),
+        players,
+        winnerId: this.gameState.winnerId,
+      },
+      xpGained,
+      newLevel: null,
+      challengeProgress: [],
+    };
+  }
+
+  private returnToMenu(): void {
+    if (this.isOnline) {
+      this.connection.disconnect();
+    }
+    this.screen = "menu";
+    this.gameState = null;
+    this.bots = [];
+    this.isOnline = false;
+    this.onlineFlow = false;
+    this.activeRoomCode = "";
+    this.remoteTargets = {};
+    this.killFeed = [];
+    this.killFeedTimers = [];
+    this.lastKillFeedIndex = 0;
+    this.comboCounter = 0;
+    this.killStreak = 0;
+    this.postGameData = null;
+    this.chatMessages = [];
+  }
+
   // ===== Local Game =====
 
   private startLocalGame(): void {
@@ -380,6 +837,12 @@ export class Game {
     }
 
     this.initAudioTracking();
+    this.killFeed = [];
+    this.killFeedTimers = [];
+    this.lastKillFeedIndex = 0;
+    this.comboCounter = 0;
+    this.killStreak = 0;
+    this.chatMessages = [];
     this.screen = "playing";
     this.isOnline = false;
   }
@@ -399,7 +862,6 @@ export class Game {
   }
 
   private joinRoom(roomId: string): void {
-    // Clean up any previous connection attempt
     if (this.connectionCheckInterval) {
       clearInterval(this.connectionCheckInterval);
       this.connectionCheckInterval = null;
@@ -442,13 +904,11 @@ export class Game {
       const input = this.input.getInput();
       this.connection.send({ type: "input", input });
 
-      // Client-side prediction: update local player movement locally
       const localPlayer = this.gameState.players[this.localPlayerId];
       if (localPlayer?.alive) {
         this.predictLocalMovement(localPlayer, input, dt);
       }
 
-      // Interpolate remote players toward their server positions
       for (const [id, player] of Object.entries(this.gameState.players)) {
         if (id === this.localPlayerId) continue;
         const target = this.remoteTargets[id];
@@ -463,41 +923,94 @@ export class Game {
 
       this.processAudioEvents();
       this.renderer.render(this.gameState, this.localPlayerId, dt, this.activeRoomCode, this.copiedFeedbackTimer);
-      return;
+    } else {
+      const inputs: Record<string, PlayerInput> = {};
+      inputs[this.localPlayerId] = this.input.getInput();
+      for (const bot of this.bots) {
+        inputs[bot.id] = bot.getInput(this.gameState);
+      }
+
+      simulateTick(this.gameState, inputs, dt);
+
+      // Process new kill events from simulation
+      this.processLocalKillFeed();
+
+      this.processAudioEvents();
+      this.renderer.render(this.gameState, this.localPlayerId, dt);
     }
 
-    const inputs: Record<string, PlayerInput> = {};
-    inputs[this.localPlayerId] = this.input.getInput();
-    for (const bot of this.bots) {
-      inputs[bot.id] = bot.getInput(this.gameState);
+    // Draw kill feed overlay
+    this.drawKillFeedOverlay();
+
+    // Draw chat overlay
+    if (this.chatMessages.length > 0 || this.chatOpen) {
+      this.drawChatOverlay();
     }
 
-    simulateTick(this.gameState, inputs, dt);
-    this.processAudioEvents();
-    this.renderer.render(this.gameState, this.localPlayerId, dt);
+    // Draw announcement
+    if (this.announcementTimer > 0) {
+      this.drawAnnouncement();
+    }
+
+    // Draw invite banner if applicable
+    if (this.invites.length > 0) {
+      this.drawInviteBanner();
+    }
+  }
+
+  private processLocalKillFeed(): void {
+    if (!this.gameState) return;
+    const feed = this.gameState.killFeed;
+    while (this.lastKillFeedIndex < feed.length) {
+      const event = feed[this.lastKillFeedIndex];
+      this.addKillFeedEntry(event);
+      this.lastKillFeedIndex++;
+    }
+  }
+
+  private addKillFeedEntry(event: KillEvent): void {
+    this.killFeed.push(event);
+    this.killFeedTimers.push(5); // 5 seconds display
+
+    // Track combos and killstreaks for local player
+    if (event.killerId === this.localPlayerId && event.victimId !== this.localPlayerId) {
+      this.killStreak++;
+      this.comboTimer = 3;
+      this.comboCounter++;
+
+      if (this.comboCounter === 2) this.showAnnouncement("Doppelkill!");
+      else if (this.comboCounter === 3) this.showAnnouncement("Triplekill!");
+      if (this.killStreak === 3) this.showAnnouncement("Killstreak!");
+      else if (this.killStreak === 5) this.showAnnouncement("Unaufhaltsam!");
+    }
+    if (event.victimId === this.localPlayerId) {
+      this.killStreak = 0;
+      this.comboCounter = 0;
+    }
+  }
+
+  private showAnnouncement(text: string): void {
+    this.announcement = text;
+    this.announcementTimer = 2;
   }
 
   private predictLocalMovement(player: PlayerState, input: PlayerInput, dt: number): void {
     const config = SHIP_CONFIGS[player.shipClass];
 
-    // Rotation toward aim
     const rotDiff = angleDiff(player.rotation, input.aimAngle);
     const maxRot = config.rotationSpeed * dt;
     player.rotation += clamp(rotDiff, -maxRot, maxRot);
 
-    // Friction
     let friction = DRIFT_FRICTION;
     if (player.mods.ship === "drift-master") friction = 0.99;
     player.velocity = scale(player.velocity, Math.pow(friction, dt * 60));
 
-    // Gravity
     if (this.gameState) {
       const gravityMul = player.mods.ship === "gravity-anchor" ? 0.3 : 1.0;
       const gravVel = applyGravity({ x: 0, y: 0 }, player.position, this.gameState.gravityWells, dt);
       player.velocity = add(player.velocity, scale(gravVel, gravityMul));
     }
 
-    // Thrust from input
     let thrustDir: Vec2 | null = null;
     if (player.controlMode === "ship-relative") {
       const forward = vecFromAngle(player.rotation);
@@ -527,10 +1040,8 @@ export class Game {
       player.velocity = add(player.velocity, scale(thrustDir, speed * dt));
     }
 
-    // Position update
     player.position = add(player.position, scale(player.velocity, dt));
 
-    // Arena bounds
     if (this.gameState) {
       const map = MAPS[this.gameState.mapId];
       const bounced = reflectVelocity(player.position, player.velocity, config.collisionRadius, map.width, map.height);
@@ -578,7 +1089,6 @@ export class Game {
   private reconcileWithServer(serverState: GameState): void {
     if (!this.gameState) return;
 
-    // Save predicted local player state
     const localPlayer = this.gameState.players[this.localPlayerId];
     const predicted = localPlayer ? {
       x: localPlayer.position.x, y: localPlayer.position.y,
@@ -586,14 +1096,12 @@ export class Game {
       rot: localPlayer.rotation,
     } : null;
 
-    // Save rendered remote positions for smooth interpolation
     const rendered: Record<string, { x: number; y: number; rot: number }> = {};
     for (const [id, player] of Object.entries(this.gameState.players)) {
       if (id === this.localPlayerId) continue;
       rendered[id] = { x: player.position.x, y: player.position.y, rot: player.rotation };
     }
 
-    // Update interpolation targets for remote players
     for (const [id, player] of Object.entries(serverState.players)) {
       if (id === this.localPlayerId) continue;
       this.remoteTargets[id] = {
@@ -603,10 +1111,8 @@ export class Game {
       };
     }
 
-    // Take server state as authoritative
     this.gameState = serverState;
 
-    // Soft-correct local player toward server (keep prediction, blend toward authority)
     if (predicted && this.gameState.players[this.localPlayerId]) {
       const p = this.gameState.players[this.localPlayerId];
       const t = 0.3;
@@ -617,7 +1123,6 @@ export class Game {
       p.rotation = predicted.rot;
     }
 
-    // Restore rendered positions for remote players (interpolation will catch up)
     for (const [id, r] of Object.entries(rendered)) {
       const p = this.gameState.players[id];
       if (p && p.alive) {
@@ -627,7 +1132,6 @@ export class Game {
       }
     }
 
-    // Clean up targets for removed players
     for (const id of Object.keys(this.remoteTargets)) {
       if (!serverState.players[id]) delete this.remoteTargets[id];
     }
@@ -640,7 +1144,7 @@ export class Game {
           this.reconcileWithServer(msg.state);
         } else {
           this.gameState = msg.state;
-          if (this.screen === "online-lobby") {
+          if (this.screen === "online-lobby" || this.screen === "matchmaking") {
             this.screen = "playing";
             this.initAudioTracking();
           }
@@ -655,10 +1159,491 @@ export class Game {
         break;
       case "game-over":
         break;
+      case "kill":
+        this.addKillFeedEntry(msg.event);
+        break;
+      case "chat":
+        this.chatMessages.push(msg.message);
+        if (this.chatMessages.length > 50) this.chatMessages.shift();
+        break;
+      case "post-game":
+        this.postGameData = msg.data;
+        break;
+      case "rematch":
+        // Could show vote count, for now just auto-transition
+        break;
     }
   }
 
-  // ===== Mod Select Screen =====
+  // ===== HUD Overlays (drawn on top of game) =====
+
+  private drawKillFeedOverlay(): void {
+    if (this.killFeed.length === 0) return;
+    const ctx = this.canvas.getContext("2d")!;
+    const x = ctx.canvas.width - 20;
+    let y = 80;
+    const maxVisible = 5;
+
+    const start = Math.max(0, this.killFeed.length - maxVisible);
+    for (let i = start; i < this.killFeed.length; i++) {
+      const event = this.killFeed[i];
+      const isLocal = event.killerId === this.localPlayerId || event.victimId === this.localPlayerId;
+
+      ctx.font = "12px monospace";
+      ctx.textAlign = "right";
+      ctx.fillStyle = isLocal ? "#ffaa00" : "#999999";
+      ctx.fillText(this.getKillText(event), x, y);
+      y += 18;
+    }
+    ctx.textAlign = "left"; // Reset
+  }
+
+  private getKillText(event: KillEvent): string {
+    const arrow = " \u2192 ";
+    switch (event.killType) {
+      case "gravity-well": return `${event.killerName}${arrow}${event.victimName} [Gravity]`;
+      case "ricochet": return `${event.killerName}${arrow}${event.victimName} [Ricochet]`;
+      case "homing": return `${event.killerName}${arrow}${event.victimName} [Homing]`;
+      case "melee": return `${event.killerName}${arrow}${event.victimName} [Nahkampf]`;
+      case "emp": return `${event.killerName}${arrow}${event.victimName} [EMP]`;
+      default: return `${event.killerName}${arrow}${event.victimName}`;
+    }
+  }
+
+  private drawChatOverlay(): void {
+    const ctx = this.canvas.getContext("2d")!;
+    const x = 20;
+    const baseY = ctx.canvas.height - 40;
+
+    // Show last 5 messages
+    const visible = this.chatMessages.slice(-5);
+    for (let i = 0; i < visible.length; i++) {
+      const msg = visible[i];
+      const y = baseY - (visible.length - 1 - i) * 18;
+      ctx.font = "12px monospace";
+      ctx.textAlign = "left";
+      ctx.fillStyle = "rgba(0,0,0,0.5)";
+      ctx.fillRect(x - 5, y - 12, 400, 16);
+      ctx.fillStyle = "#aaaaff";
+      ctx.fillText(`${msg.senderName}: `, x, y);
+      const nameWidth = ctx.measureText(`${msg.senderName}: `).width;
+      ctx.fillStyle = "#cccccc";
+      ctx.fillText(msg.text, x + nameWidth, y);
+    }
+
+    // Chat input
+    if (this.chatOpen) {
+      const y = baseY + 5;
+      ctx.fillStyle = "rgba(0,0,0,0.7)";
+      ctx.fillRect(x - 5, y - 12, 400, 20);
+      ctx.font = "12px monospace";
+      ctx.fillStyle = "#ffffff";
+      const cursor = Math.sin(performance.now() / 300) > 0 ? "_" : "";
+      ctx.fillText(`> ${this.chatInput}${cursor}`, x, y);
+    }
+  }
+
+  private drawAnnouncement(): void {
+    const ctx = this.canvas.getContext("2d")!;
+    const alpha = Math.min(1, this.announcementTimer);
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.font = "bold 48px monospace";
+    ctx.textAlign = "center";
+    ctx.fillStyle = "#ffaa00";
+    ctx.fillText(this.announcement, ctx.canvas.width / 2, ctx.canvas.height / 2 - 50);
+    ctx.restore();
+  }
+
+  private drawInviteBanner(): void {
+    if (this.screen === "playing") return; // Don't show during gameplay
+    const invite = this.invites[0];
+    if (!invite) return;
+
+    const ctx = this.canvas.getContext("2d")!;
+    const w = ctx.canvas.width;
+    ctx.fillStyle = "rgba(0,0,0,0.8)";
+    ctx.fillRect(w / 2 - 250, 10, 500, 40);
+    ctx.strokeStyle = "#ffaa00";
+    ctx.strokeRect(w / 2 - 250, 10, 500, 40);
+    ctx.font = "14px monospace";
+    ctx.textAlign = "center";
+    ctx.fillStyle = "#ffaa00";
+    ctx.fillText(`${invite.fromName} laedt dich ein!  [Enter = Annehmen]  [Esc = Ablehnen]`, w / 2, 35);
+  }
+
+  // ===== New Screen Drawings =====
+
+  private drawMenuOverlay(_mx: number, _my: number): void {
+    const ctx = this.canvas.getContext("2d")!;
+    const w = ctx.canvas.width;
+
+    // User info top-right
+    if (this.currentUser) {
+      ctx.font = "12px monospace";
+      ctx.textAlign = "right";
+      ctx.fillStyle = "#aaaaaa";
+      ctx.fillText(`${this.currentUser.displayName} (Lvl ${this.currentUser.level})`, w - 20, 20);
+    }
+
+    // Keyboard hints at bottom
+    ctx.font = "11px monospace";
+    ctx.textAlign = "center";
+    ctx.fillStyle = "#555555";
+    const hints = "Space = Quick Play  |  F = Freunde  |  P = Profil";
+    ctx.fillText(hints, w / 2, ctx.canvas.height - 15);
+
+    if (!this.api.isAccount) {
+      ctx.fillText("L = Anmelden", w / 2, ctx.canvas.height - 30);
+    }
+
+    // Error message
+    if (this.textInputError) {
+      ctx.font = "14px monospace";
+      ctx.fillStyle = "#ff4444";
+      ctx.fillText(this.textInputError, w / 2, ctx.canvas.height - 50);
+    }
+  }
+
+  private drawPostGame(): void {
+    const ctx = this.canvas.getContext("2d")!;
+    const w = this.canvas.width = window.innerWidth;
+    const h = this.canvas.height = window.innerHeight;
+
+    ctx.fillStyle = COLORS.background;
+    ctx.fillRect(0, 0, w, h);
+
+    ctx.font = "bold 36px monospace";
+    ctx.textAlign = "center";
+    ctx.fillStyle = "#ffaa00";
+    ctx.fillText("RUNDE VORBEI!", w / 2, 60);
+
+    if (!this.postGameData) {
+      ctx.font = "16px monospace";
+      ctx.fillStyle = COLORS.uiDim;
+      ctx.fillText("Lade Ergebnisse...", w / 2, 150);
+      return;
+    }
+
+    const result = this.postGameData.matchResult;
+
+    // Winner
+    if (result.winnerId) {
+      const winner = result.players.find((p) => p.id === result.winnerId);
+      if (winner) {
+        ctx.font = "bold 24px monospace";
+        ctx.fillStyle = "#44ff88";
+        ctx.fillText(`Gewinner: ${winner.name}`, w / 2, 100);
+      }
+    }
+
+    // Scoreboard
+    ctx.font = "bold 14px monospace";
+    ctx.fillStyle = COLORS.ui;
+    const headers = ["#", "Name", "Klasse", "Kills", "Tode", "Schaden", "Genauigkeit"];
+    const colX = [w / 2 - 340, w / 2 - 300, w / 2 - 160, w / 2 - 40, w / 2 + 40, w / 2 + 130, w / 2 + 260];
+    ctx.textAlign = "left";
+    headers.forEach((h, i) => ctx.fillText(h, colX[i], 140));
+
+    result.players.forEach((p, i) => {
+      const y = 170 + i * 28;
+      const isLocal = p.id === this.localPlayerId;
+      ctx.font = "12px monospace";
+      ctx.fillStyle = isLocal ? "#ffaa00" : "#cccccc";
+      ctx.fillText(`${i + 1}`, colX[0], y);
+      ctx.fillText(p.name, colX[1], y);
+      ctx.fillText(p.shipClass, colX[2], y);
+      ctx.fillText(`${p.eliminations}`, colX[3], y);
+      ctx.fillText(`${p.deaths}`, colX[4], y);
+      ctx.fillText(`${p.damageDealt}`, colX[5], y);
+      ctx.fillText(`${p.accuracy}%`, colX[6], y);
+    });
+
+    // XP gained
+    const xpY = 190 + result.players.length * 28;
+    ctx.font = "bold 18px monospace";
+    ctx.textAlign = "center";
+    ctx.fillStyle = "#44ff88";
+    ctx.fillText(`+${this.postGameData.xpGained} XP`, w / 2, xpY);
+
+    // Buttons
+    ctx.font = "16px monospace";
+    ctx.fillStyle = COLORS.ui;
+    ctx.fillText("[Enter/N] Nochmal!     [Esc/M] Hauptmenue", w / 2, xpY + 50);
+  }
+
+  private drawFriends(): void {
+    const ctx = this.canvas.getContext("2d")!;
+    const w = this.canvas.width = window.innerWidth;
+    const h = this.canvas.height = window.innerHeight;
+
+    ctx.fillStyle = COLORS.background;
+    ctx.fillRect(0, 0, w, h);
+
+    const online = this.friends.filter((f) => f.presence !== "offline").length;
+    ctx.font = "bold 36px monospace";
+    ctx.textAlign = "center";
+    ctx.fillStyle = COLORS.ui;
+    ctx.fillText(`FREUNDE (${online}/${this.friends.length} Online)`, w / 2, 60);
+
+    if (this.friends.length === 0) {
+      ctx.font = "16px monospace";
+      ctx.fillStyle = COLORS.uiDim;
+      ctx.fillText("Noch keine Freunde. Druecke S zum Suchen.", w / 2, 150);
+    }
+
+    // Friend list
+    for (let i = 0; i < this.friends.length; i++) {
+      const friend = this.friends[i];
+      const y = 100 + i * 35;
+      const isSelected = i === this.friendsSelectedIndex;
+
+      if (isSelected) {
+        ctx.fillStyle = "rgba(100,100,255,0.1)";
+        ctx.fillRect(w / 2 - 300, y - 15, 600, 30);
+      }
+
+      // Status dot
+      ctx.fillStyle = friend.presence === "offline" ? "#555555"
+        : friend.presence === "online-ingame" ? "#ff6600" : "#44ff88";
+      ctx.beginPath();
+      ctx.arc(w / 2 - 280, y, 5, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.font = "14px monospace";
+      ctx.textAlign = "left";
+      ctx.fillStyle = isSelected ? COLORS.ui : "#cccccc";
+      ctx.fillText(friend.username, w / 2 - 260, y + 4);
+
+      ctx.fillStyle = COLORS.uiDim;
+      ctx.font = "11px monospace";
+      ctx.fillText(`Lvl ${friend.level}`, w / 2 - 100, y + 4);
+
+      const statusText = friend.presence === "offline" ? "Offline"
+        : friend.presence === "online-ingame" ? "Im Spiel" : "Online";
+      ctx.fillText(statusText, w / 2 + 50, y + 4);
+
+      if (friend.presence === "online-ingame" && friend.roomId) {
+        ctx.fillStyle = "#44ff88";
+        ctx.fillText("[Beitreten]", w / 2 + 200, y + 4);
+      }
+    }
+
+    // Friend requests
+    if (this.friendsRequestsMode && this.friendRequests.incoming.length > 0) {
+      const reqY = 120 + this.friends.length * 35;
+      ctx.font = "bold 16px monospace";
+      ctx.textAlign = "center";
+      ctx.fillStyle = "#ffaa00";
+      ctx.fillText(`Anfragen (${this.friendRequests.incoming.length})`, w / 2, reqY);
+
+      for (let i = 0; i < this.friendRequests.incoming.length; i++) {
+        const req = this.friendRequests.incoming[i];
+        ctx.font = "14px monospace";
+        ctx.fillStyle = "#cccccc";
+        ctx.fillText(`${req.fromUsername} moechte dein Freund sein`, w / 2, reqY + 25 + i * 25);
+      }
+    }
+
+    // Bottom hints
+    ctx.font = "12px monospace";
+    ctx.textAlign = "center";
+    ctx.fillStyle = COLORS.uiDim;
+    ctx.fillText("S = Suchen  |  A = Anfragen  |  Esc = Zurueck", w / 2, h - 30);
+
+    // Search mode overlay
+    if (this.friendsSearchMode) {
+      ctx.fillStyle = "rgba(0,0,0,0.8)";
+      ctx.fillRect(w / 2 - 200, h / 2 - 50, 400, 100);
+      ctx.strokeStyle = COLORS.ui;
+      ctx.strokeRect(w / 2 - 200, h / 2 - 50, 400, 100);
+      ctx.font = "14px monospace";
+      ctx.fillStyle = COLORS.ui;
+      ctx.fillText("Benutzername eingeben:", w / 2, h / 2 - 20);
+      const cursor = Math.sin(performance.now() / 300) > 0 ? "_" : "";
+      ctx.fillText((this.textInputFields["search"] || "") + cursor, w / 2, h / 2 + 10);
+
+      if (this.textInputMessage) {
+        ctx.fillStyle = "#44ff88";
+        ctx.fillText(this.textInputMessage, w / 2, h / 2 + 35);
+      }
+    }
+  }
+
+  private drawLogin(): void {
+    const ctx = this.canvas.getContext("2d")!;
+    const w = this.canvas.width = window.innerWidth;
+    const h = this.canvas.height = window.innerHeight;
+
+    ctx.fillStyle = COLORS.background;
+    ctx.fillRect(0, 0, w, h);
+
+    ctx.font = "bold 36px monospace";
+    ctx.textAlign = "center";
+    ctx.fillStyle = COLORS.ui;
+    ctx.fillText("ANMELDEN", w / 2, 80);
+
+    // Email field
+    this.drawInputField(ctx, w / 2, 160, "E-Mail", "email", false);
+    // Password field
+    this.drawInputField(ctx, w / 2, 230, "Passwort", "password", true);
+
+    // Error
+    if (this.textInputError) {
+      ctx.font = "14px monospace";
+      ctx.fillStyle = "#ff4444";
+      ctx.fillText(this.textInputError, w / 2, 290);
+    }
+
+    // Buttons
+    ctx.font = "16px monospace";
+    ctx.fillStyle = COLORS.ui;
+    ctx.fillText("[Enter] Anmelden  |  [R] Registrieren  |  [Esc] Zurueck", w / 2, 340);
+    ctx.font = "12px monospace";
+    ctx.fillStyle = COLORS.uiDim;
+    ctx.fillText("Klicke auf ein Feld und tippe den Wert ein. Tab = naechstes Feld.", w / 2, 380);
+  }
+
+  private drawRegister(): void {
+    const ctx = this.canvas.getContext("2d")!;
+    const w = this.canvas.width = window.innerWidth;
+    const h = this.canvas.height = window.innerHeight;
+
+    ctx.fillStyle = COLORS.background;
+    ctx.fillRect(0, 0, w, h);
+
+    ctx.font = "bold 36px monospace";
+    ctx.textAlign = "center";
+    ctx.fillStyle = COLORS.ui;
+    ctx.fillText("KONTO ERSTELLEN", w / 2, 80);
+
+    this.drawInputField(ctx, w / 2, 140, "E-Mail", "email", false);
+    this.drawInputField(ctx, w / 2, 210, "Benutzername", "username", false);
+    this.drawInputField(ctx, w / 2, 280, "Passwort (min. 6 Zeichen)", "password", true);
+    this.drawInputField(ctx, w / 2, 350, "Passwort wiederholen", "password2", true);
+
+    if (this.textInputError) {
+      ctx.font = "14px monospace";
+      ctx.fillStyle = "#ff4444";
+      ctx.fillText(this.textInputError, w / 2, 410);
+    }
+
+    ctx.font = "16px monospace";
+    ctx.fillStyle = COLORS.ui;
+    ctx.fillText("[Enter] Registrieren  |  [Esc] Zurueck", w / 2, 460);
+
+    if (this.api.isGuest) {
+      ctx.font = "12px monospace";
+      ctx.fillStyle = "#44ff88";
+      ctx.fillText("Dein Gast-Fortschritt wird uebernommen!", w / 2, 500);
+    }
+  }
+
+  private drawProfile(): void {
+    const ctx = this.canvas.getContext("2d")!;
+    const w = this.canvas.width = window.innerWidth;
+    const h = this.canvas.height = window.innerHeight;
+
+    ctx.fillStyle = COLORS.background;
+    ctx.fillRect(0, 0, w, h);
+
+    ctx.font = "bold 36px monospace";
+    ctx.textAlign = "center";
+    ctx.fillStyle = COLORS.ui;
+    ctx.fillText("PROFIL", w / 2, 80);
+
+    if (this.currentUser) {
+      ctx.font = "bold 24px monospace";
+      ctx.fillStyle = "#ffaa00";
+      ctx.fillText(this.currentUser.displayName, w / 2, 140);
+
+      ctx.font = "16px monospace";
+      ctx.fillStyle = COLORS.ui;
+      ctx.fillText(`Level ${this.currentUser.level}`, w / 2, 175);
+      ctx.fillText(`Typ: ${this.currentUser.type === "account" ? "Registriert" : "Gast"}`, w / 2, 210);
+    } else {
+      ctx.font = "16px monospace";
+      ctx.fillStyle = COLORS.uiDim;
+      ctx.fillText("Nicht angemeldet", w / 2, 150);
+    }
+
+    if (this.api.isGuest) {
+      ctx.font = "14px monospace";
+      ctx.fillStyle = "#ffaa00";
+      ctx.fillText("Registriere dich um Freunde hinzuzufuegen und Cosmetics freizuschalten!", w / 2, 280);
+    }
+
+    ctx.font = "14px monospace";
+    ctx.fillStyle = COLORS.uiDim;
+    if (this.api.isAccount) {
+      ctx.fillText("[L] Abmelden  |  [Esc] Zurueck", w / 2, 350);
+    } else {
+      ctx.fillText("[Esc] Zurueck", w / 2, 350);
+    }
+  }
+
+  private drawMatchmaking(): void {
+    const ctx = this.canvas.getContext("2d")!;
+    const w = this.canvas.width = window.innerWidth;
+    const h = this.canvas.height = window.innerHeight;
+
+    ctx.fillStyle = COLORS.background;
+    ctx.fillRect(0, 0, w, h);
+
+    ctx.font = "bold 36px monospace";
+    ctx.textAlign = "center";
+    ctx.fillStyle = COLORS.ui;
+
+    const dots = ".".repeat(Math.floor(this.matchmakingTimer * 2) % 4);
+    ctx.fillText(`SUCHE MITSPIELER${dots}`, w / 2, h / 2 - 40);
+
+    ctx.font = "18px monospace";
+    ctx.fillStyle = "#ffaa00";
+    ctx.fillText(`${this.matchmakingPlayersInQueue} Spieler in Warteschlange`, w / 2, h / 2 + 10);
+
+    ctx.font = "14px monospace";
+    ctx.fillStyle = COLORS.uiDim;
+    const remaining = Math.max(0, 30 - Math.floor(this.matchmakingTimer));
+    ctx.fillText(`Bot-Spiel in ${remaining}s falls kein Match`, w / 2, h / 2 + 50);
+
+    ctx.fillText("[Esc] Abbrechen", w / 2, h / 2 + 90);
+  }
+
+  private drawInputField(
+    ctx: CanvasRenderingContext2D, cx: number, y: number,
+    label: string, fieldName: string, isPassword: boolean,
+  ): void {
+    const isActive = this.textInputActive === fieldName;
+    const value = this.textInputFields[fieldName] || "";
+    const displayValue = isPassword ? "*".repeat(value.length) : value;
+
+    ctx.font = "12px monospace";
+    ctx.textAlign = "center";
+    ctx.fillStyle = COLORS.uiDim;
+    ctx.fillText(label, cx, y - 20);
+
+    ctx.strokeStyle = isActive ? COLORS.ui : COLORS.uiDim;
+    ctx.lineWidth = isActive ? 2 : 1;
+    ctx.strokeRect(cx - 150, y - 15, 300, 30);
+
+    ctx.font = "14px monospace";
+    ctx.fillStyle = COLORS.ui;
+    const cursor = isActive && Math.sin(performance.now() / 300) > 0 ? "_" : "";
+    ctx.fillText(displayValue + cursor, cx, y + 5);
+
+    // Make field clickable
+    if (!this.textInputActive || this.textInputActive !== fieldName) {
+      // Simple: click on field area to activate
+      const mx = this.input.getMouseX();
+      const my = this.input.getMouseY();
+      if (mx >= cx - 150 && mx <= cx + 150 && my >= y - 15 && my <= y + 15) {
+        // Detect click in handleMenuClick would be needed, but for keyboard flow:
+        // Just allow Tab to navigate between fields
+      }
+    }
+  }
+
+  // ===== Existing Screen Drawings =====
 
   private drawModSelect(): void {
     const ctx = this.canvas.getContext("2d")!;
@@ -706,7 +1691,6 @@ export class Game {
     this.drawModCategory(ctx, w / 2, 260, "SHIP MOD", shipMods, shipDescs, this.selectedShipMod, "#4488ff", "ship", mx, my);
     this.drawModCategory(ctx, w / 2, 400, "PASSIVE MOD", passiveMods, passiveDescs, this.selectedPassiveMod, "#44ff88", "passive", mx, my);
 
-    // Control mode selector
     ctx.font = "bold 16px monospace";
     ctx.fillStyle = "#ffaa00";
     ctx.textAlign = "center";
@@ -744,12 +1728,9 @@ export class Game {
       this.menuClickRegions.push({ x: bx, y: by, width: bw, height: bh, id: regionId });
     }
 
-    // Buttons
     this.drawMenuButton(ctx, w / 2, 645, 220, 44, "Weiter", COLORS.ui, "button-start", mx, my);
     this.drawMenuButton(ctx, w / 2, 700, 150, 36, "Zurueck", COLORS.uiDim, "button-back", mx, my);
   }
-
-  // ===== Settings Screen =====
 
   private drawSettings(): void {
     const ctx = this.canvas.getContext("2d")!;
@@ -768,7 +1749,6 @@ export class Game {
     ctx.fillStyle = COLORS.ui;
     ctx.fillText("SPIELEINSTELLUNGEN", w / 2, 60);
 
-    // Difficulty section
     ctx.font = "bold 18px monospace";
     ctx.fillStyle = "#ff4444";
     ctx.fillText("BOT-SCHWIERIGKEIT", w / 2, 110);
@@ -805,7 +1785,6 @@ export class Game {
       ctx.fillStyle = COLORS.uiDim;
       ctx.fillText(preset.description, bx + bw / 2, by + 45);
 
-      // Difficulty bar
       const barW = bw - 20;
       const barH = 4;
       const barX = bx + 10;
@@ -818,7 +1797,6 @@ export class Game {
       this.menuClickRegions.push({ x: bx, y: by, width: bw, height: bh, id: regionId });
     }
 
-    // Bot count section
     ctx.font = "bold 18px monospace";
     ctx.fillStyle = "#4488ff";
     ctx.fillText("ANZAHL BOTS", w / 2, 250);
@@ -851,17 +1829,13 @@ export class Game {
       this.menuClickRegions.push({ x: bx, y: by, width: bw, height: bh, id: regionId });
     }
 
-    // Hints
     ctx.font = "12px monospace";
     ctx.fillStyle = COLORS.uiDim;
     ctx.fillText("Q/E = Schwierigkeit  |  W/S = Bots  |  1-5 = Schwierigkeit direkt", w / 2, 360);
 
-    // Buttons
     this.drawMenuButton(ctx, w / 2, 410, 220, 44, "LOS GEHTS!", COLORS.ui, "button-start-game", mx, my);
     this.drawMenuButton(ctx, w / 2, 465, 150, 36, "Zurueck", COLORS.uiDim, "button-settings-back", mx, my);
   }
-
-  // ===== Online Lobby Screen =====
 
   private drawOnlineLobby(): void {
     const ctx = this.canvas.getContext("2d")!;
@@ -880,10 +1854,8 @@ export class Game {
     ctx.fillStyle = COLORS.ui;
     ctx.fillText("MULTIPLAYER LOBBY", w / 2, 80);
 
-    // New room button
     this.drawMenuButton(ctx, w / 2, 145, 240, 40, "Neuer Raum erstellen", COLORS.nova, "button-new-room", mx, my);
 
-    // Room code input
     ctx.font = "16px monospace";
     ctx.fillStyle = COLORS.uiDim;
     ctx.textAlign = "center";
@@ -901,7 +1873,6 @@ export class Game {
     ctx.fillStyle = COLORS.uiDim;
     ctx.fillText("ENTER zum Beitreten", w / 2, 298);
 
-    // Active room code display (big, easy to share)
     if (this.activeRoomCode) {
       ctx.font = "14px monospace";
       ctx.fillStyle = COLORS.uiDim;
@@ -911,21 +1882,18 @@ export class Game {
       ctx.fillStyle = "#ffaa00";
       ctx.fillText(this.activeRoomCode, w / 2, 368);
 
-      // Copy button
       const copyLabel = this.copiedFeedbackTimer > 0 ? "Kopiert!" : "[ Kopieren ]";
       const copyColor = this.copiedFeedbackTimer > 0 ? "#44ff88" : COLORS.uiDim;
       const copyHovered = this.hitTestLocal(mx, my) === "button-copy-code";
       this.drawMenuButton(ctx, w / 2, 405, 140, 28, copyLabel, copyHovered ? COLORS.ui : copyColor, "button-copy-code", mx, my);
     }
 
-    // Status
     if (this.lobbyStatus) {
       ctx.font = "16px monospace";
       ctx.fillStyle = COLORS.gravityWell;
       ctx.fillText(this.lobbyStatus, w / 2, 420);
     }
 
-    // Back button
     this.drawMenuButton(ctx, w / 2, h - 50, 200, 36, "Zurueck", COLORS.uiDim, "button-lobby-back", mx, my);
   }
 
