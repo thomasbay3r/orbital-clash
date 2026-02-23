@@ -285,7 +285,7 @@ async function handleGetProfile(request: Request, env: Env): Promise<Response> {
 
   if (user.type === "guest") {
     return Response.json({
-      type: "guest", id: user.id, displayName: user.displayName, level: user.level,
+      type: "guest", id: user.id, displayName: user.displayName, level: user.level, xp: user.xp ?? 0,
     });
   }
 
@@ -776,7 +776,7 @@ async function authenticateUser(request: Request, env: Env): Promise<AuthUser | 
 
     if (payload.type === "account") {
       const account = await env.DB.prepare(
-        "SELECT id, username, level FROM accounts WHERE id = ?",
+        "SELECT id, username, xp, level FROM accounts WHERE id = ?",
       ).bind(payload.id).first();
       if (account) {
         return {
@@ -784,6 +784,7 @@ async function authenticateUser(request: Request, env: Env): Promise<AuthUser | 
           id: account.id as string,
           displayName: account.username as string,
           level: account.level as number,
+          xp: (account.xp as number) ?? 0,
         };
       }
     }
@@ -793,7 +794,7 @@ async function authenticateUser(request: Request, env: Env): Promise<AuthUser | 
 
   // Try as guest token (plain UUID)
   const guest = await env.DB.prepare(
-    "SELECT id, display_name, level FROM guest_sessions WHERE token = ?",
+    "SELECT id, display_name, xp, level FROM guest_sessions WHERE token = ?",
   ).bind(token).first();
   if (guest) {
     return {
@@ -801,6 +802,7 @@ async function authenticateUser(request: Request, env: Env): Promise<AuthUser | 
       id: guest.id as string,
       displayName: guest.display_name as string,
       level: guest.level as number,
+      xp: (guest.xp as number) ?? 0,
     };
   }
 

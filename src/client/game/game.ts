@@ -14,7 +14,7 @@ import {
 } from "../../shared/game-simulation";
 import {
   SHIP_CONFIGS, COLORS, DIFFICULTY_PRESETS, DEFAULT_DIFFICULTY_INDEX,
-  DRIFT_FRICTION, BOOST_MULTIPLIER, MUTATOR_CONFIGS,
+  DRIFT_FRICTION, BOOST_MULTIPLIER, MUTATOR_CONFIGS, XP_PER_LEVEL, MAX_LEVEL,
   SKIN_CONFIGS, TRAIL_CONFIGS, KILL_EFFECT_CONFIGS, TITLE_CONFIGS, EMOTE_CONFIGS,
   DAILY_CHALLENGE_POOL, WEEKLY_CHALLENGE_POOL, ACHIEVEMENT_CONFIGS,
 } from "../../shared/constants";
@@ -182,6 +182,7 @@ export class Game {
       this.api.getMe().then((user) => {
         this.currentUser = user;
         this.playerName = user.displayName;
+        this.restoreLocalXp();
       }).catch(() => {});
     }
 
@@ -1006,6 +1007,7 @@ export class Game {
       try {
         this.currentUser = await this.api.initGuest();
         this.playerName = this.currentUser.displayName;
+        this.restoreLocalXp();
       } catch {
         this.textInputError = t("error.connectionFailed");
         return;
@@ -1061,6 +1063,20 @@ export class Game {
 
   // ===== Post-Game =====
 
+  private restoreLocalXp(): void {
+    if (!this.currentUser) return;
+    try {
+      const saved = localStorage.getItem("local_xp");
+      if (saved) {
+        const savedXp = parseInt(saved, 10);
+        if (savedXp > this.currentUser.xp) {
+          this.currentUser.xp = savedXp;
+          this.currentUser.level = Math.min(MAX_LEVEL, Math.floor(savedXp / XP_PER_LEVEL) + 1);
+        }
+      }
+    } catch {}
+  }
+
   private transitionToPostGame(): void {
     if (!this.gameState) return;
 
@@ -1074,6 +1090,13 @@ export class Game {
     } else {
       // Generate local post-game data
       this.postGameData = this.generateLocalPostGame();
+    }
+
+    // Accumulate XP locally and persist
+    if (this.postGameData && this.currentUser) {
+      this.currentUser.xp += this.postGameData.xpGained;
+      this.currentUser.level = Math.min(MAX_LEVEL, Math.floor(this.currentUser.xp / XP_PER_LEVEL) + 1);
+      try { localStorage.setItem("local_xp", String(this.currentUser.xp)); } catch {}
     }
 
     this.screen = "post-game";
@@ -2028,7 +2051,31 @@ export class Game {
       ctx.font = "16px monospace";
       ctx.fillStyle = COLORS.ui;
       ctx.fillText(t("profile.level", { n: this.currentUser.level }), w / 2, 175);
-      ctx.fillText(this.currentUser.type === "account" ? t("profile.typeAccount") : t("profile.typeGuest"), w / 2, 210);
+
+      // XP progress bar
+      const xpInLevel = this.currentUser.xp % XP_PER_LEVEL;
+      const xpProgress = this.currentUser.level >= MAX_LEVEL ? 1 : xpInLevel / XP_PER_LEVEL;
+      const barW = 300;
+      const barH = 14;
+      const barX = w / 2 - barW / 2;
+      const barY = 188;
+      ctx.fillStyle = "#111133";
+      ctx.fillRect(barX, barY, barW, barH);
+      ctx.fillStyle = "#ffaa00";
+      ctx.fillRect(barX, barY, barW * xpProgress, barH);
+      ctx.strokeStyle = "#ffaa0044";
+      ctx.lineWidth = 1;
+      ctx.strokeRect(barX, barY, barW, barH);
+      ctx.font = "12px monospace";
+      ctx.fillStyle = COLORS.uiDim;
+      if (this.currentUser.level >= MAX_LEVEL) {
+        ctx.fillText(`${this.currentUser.xp} XP (Max)`, w / 2, barY + barH + 16);
+      } else {
+        ctx.fillText(`${xpInLevel} / ${XP_PER_LEVEL} XP`, w / 2, barY + barH + 16);
+      }
+
+      ctx.font = "16px monospace";
+      ctx.fillText(this.currentUser.type === "account" ? t("profile.typeAccount") : t("profile.typeGuest"), w / 2, 236);
     } else {
       ctx.font = "16px monospace";
       ctx.fillStyle = COLORS.uiDim;
@@ -2040,26 +2087,26 @@ export class Game {
     const completedWeekly = this.weeklyChallenges.filter((c) => c.completed).length;
     ctx.font = "14px monospace";
     ctx.fillStyle = "#ffaa00";
-    ctx.fillText(t("profile.challenges", { done: completedDaily, total: this.dailyChallenges.length, wDone: completedWeekly, wTotal: this.weeklyChallenges.length }), w / 2, 260);
+    ctx.fillText(t("profile.challenges", { done: completedDaily, total: this.dailyChallenges.length, wDone: completedWeekly, wTotal: this.weeklyChallenges.length }), w / 2, 290);
 
     ctx.fillStyle = "#ff44aa";
-    ctx.fillText(t("profile.achievements", { done: this.unlockedAchievements.length, total: ACHIEVEMENT_CONFIGS.length }), w / 2, 290);
+    ctx.fillText(t("profile.achievements", { done: this.unlockedAchievements.length, total: ACHIEVEMENT_CONFIGS.length }), w / 2, 320);
 
     if (this.api.isGuest) {
       ctx.font = "14px monospace";
       ctx.fillStyle = "#ffaa00";
-      ctx.fillText(t("profile.guestHint"), w / 2, 330);
+      ctx.fillText(t("profile.guestHint"), w / 2, 360);
     }
 
     // Navigation buttons
     let btnX = w / 2 - 200;
-    this.drawMenuButton(ctx, btnX, 380, 190, 38, t("profile.challengesBtn"), COLORS.ui, "btn-challenges", mx, my);
+    this.drawMenuButton(ctx, btnX, 410, 190, 38, t("profile.challengesBtn"), COLORS.ui, "btn-challenges", mx, my);
     btnX += 200;
-    this.drawMenuButton(ctx, btnX, 380, 130, 38, t("profile.cosmeticsBtn"), COLORS.nova, "btn-cosmetics", mx, my);
+    this.drawMenuButton(ctx, btnX, 410, 130, 38, t("profile.cosmeticsBtn"), COLORS.nova, "btn-cosmetics", mx, my);
     btnX += 165;
-    this.drawMenuButton(ctx, btnX, 380, 120, 38, t("profile.backBtn"), COLORS.uiDim, "btn-profile-back", mx, my);
+    this.drawMenuButton(ctx, btnX, 410, 120, 38, t("profile.backBtn"), COLORS.uiDim, "btn-profile-back", mx, my);
     if (this.api.isAccount) {
-      this.drawMenuButton(ctx, w / 2, 430, 140, 36, t("profile.logout"), COLORS.gravityWell, "btn-logout", mx, my);
+      this.drawMenuButton(ctx, w / 2, 460, 140, 36, t("profile.logout"), COLORS.gravityWell, "btn-logout", mx, my);
     }
   }
 

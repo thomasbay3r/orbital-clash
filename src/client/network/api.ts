@@ -42,7 +42,7 @@ export class ApiClient {
     this.userType = "guest";
     localStorage.setItem("auth_token", data.token);
     localStorage.setItem("auth_type", "guest");
-    return { type: "guest", id: data.id, displayName: data.displayName, level: data.level };
+    return { type: "guest", id: data.id, displayName: data.displayName, level: data.level, xp: data.xp ?? 0 };
   }
 
   async register(email: string, username: string, password: string): Promise<AuthUser> {
@@ -55,7 +55,7 @@ export class ApiClient {
     this.userType = "account";
     localStorage.setItem("auth_token", data.token);
     localStorage.setItem("auth_type", "account");
-    return { type: "account", id: data.id, displayName: data.username, level: 1 };
+    return { type: "account", id: data.id, displayName: data.username, level: 1, xp: 0 };
   }
 
   async login(email: string, password: string): Promise<AuthUser> {
@@ -69,7 +69,7 @@ export class ApiClient {
     localStorage.setItem("auth_type", "account");
     return {
       type: "account", id: data.id,
-      displayName: data.username, level: data.level,
+      displayName: data.username, level: data.level, xp: data.xp ?? 0,
     };
   }
 

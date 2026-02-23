@@ -444,6 +444,7 @@ export interface AuthUser {
   id: string;
   displayName: string;
   level: number;
+  xp: number;
 }
 
 // ===== Social Types =====
