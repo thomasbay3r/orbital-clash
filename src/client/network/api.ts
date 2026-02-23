@@ -1,6 +1,6 @@
 import type {
   AuthUser, FriendInfo, FriendRequest, Invite, PresenceStatus,
-  ShipClass, ModLoadout, ControlMode,
+  ShipClass, ModLoadout, ControlMode, MatchResult,
 } from "../../shared/types";
 
 const API_BASE = "";
@@ -194,5 +194,24 @@ export class ApiClient {
 
   async getQueueStatus(): Promise<{ status: string; roomId?: string; playersInQueue: number }> {
     return this.fetch("/api/matchmaking/status");
+  }
+
+  // ===== Match Report =====
+
+  async reportMatch(result: MatchResult): Promise<void> {
+    const payload = {
+      matchId: result.matchId,
+      mode: result.mode,
+      map: result.map,
+      duration: result.duration,
+      players: result.players.map((p) => ({
+        ...p,
+        won: p.id === result.winnerId,
+      })),
+    };
+    await this.fetch("/api/match/complete", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
   }
 }

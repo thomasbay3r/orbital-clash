@@ -1090,6 +1090,10 @@ export class Game {
     } else {
       // Generate local post-game data
       this.postGameData = this.generateLocalPostGame();
+      // Report match to server for persistent XP storage
+      if (this.api.isLoggedIn && this.postGameData) {
+        this.api.reportMatch(this.postGameData.matchResult).catch(() => {});
+      }
     }
 
     // Accumulate XP locally and persist

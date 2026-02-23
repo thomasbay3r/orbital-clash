@@ -715,7 +715,7 @@ async function handleMatchComplete(request: Request, env: Env): Promise<Response
     ).bind(matchId, p.id, p.name, p.shipClass, p.score, p.eliminations, p.deaths,
       p.damageDealt, p.accuracy, p.gravityKills).run();
 
-    // Update account stats (only for registered accounts)
+    // Update stats for accounts and guests
     const xpGain = 50 + p.eliminations * 10 + (p.won ? 20 : 0);
     await env.DB.prepare(
       `UPDATE accounts SET
@@ -733,6 +733,11 @@ async function handleMatchComplete(request: Request, env: Env): Promise<Response
       WHERE id = ?`,
     ).bind(xpGain, xpGain, p.won ? 1 : 0, p.won ? 0 : 1, p.eliminations,
       p.damageDealt, p.gravityKills, xpGain, xpGain, xpGain, xpGain, p.id).run();
+
+    // Also update guest session XP
+    await env.DB.prepare(
+      "UPDATE guest_sessions SET xp = xp + ?, level = (xp + ?) / 200 + 1 WHERE id = ?",
+    ).bind(xpGain, xpGain, p.id).run();
 
     // Track recent players
     for (const other of players) {
