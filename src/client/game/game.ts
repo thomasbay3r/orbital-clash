@@ -24,6 +24,7 @@ import {
   applyGravity, reflectVelocity,
 } from "../../shared/physics";
 import { MAPS } from "../../shared/maps";
+import { t, getLang, setLang } from "../../shared/i18n";
 
 type Screen = "menu" | "mod-select" | "settings" | "playing" | "online-lobby"
   | "friends" | "login" | "register" | "profile" | "post-game" | "matchmaking"
@@ -43,8 +44,8 @@ const MUTATOR_OPTIONS: MutatorId[] = [
   "glass-cannon", "mystery-loadout", "fog-of-war", "speed-demon", "friendly-fire",
 ];
 const CONTROL_MODE_OPTIONS: ControlMode[] = ["absolute", "ship-relative"];
-const CONTROL_MODE_NAMES = ["Standard (WASD)", "Schiff-Relativ"];
-const CONTROL_MODE_DESCS = ["WASD = Richtung, Maus = Zielen", "W/S = Vor/Zurueck, A/D = Strafen"];
+const getControlModeNames = () => [t("controls.standard"), t("controls.relative")];
+const getControlModeDescs = () => [t("controls.standard.desc"), t("controls.relative.desc")];
 const BOT_NAMES = ["Orion", "Nebula", "Comet", "Pulsar", "Quasar", "Nova", "Zenith", "Eclipse"];
 
 export class Game {
@@ -276,7 +277,7 @@ export class Game {
 
     switch (this.screen) {
       case "menu": {
-        this.renderer.accountButtonLabel = this.api.isAccount ? "Profil" : "Anmelden";
+        this.renderer.accountButtonLabel = this.api.isAccount ? t("profile.account") : t("profile.login");
         const hovered = this.renderer.hitTest(mx, my);
         this.renderer.drawMenu(this.selectedShip, this.selectedMap, this.selectedMode, hovered);
         this.drawMenuOverlay(mx, my);
@@ -632,6 +633,13 @@ export class Game {
     }
 
     if (this.screen === "menu") {
+      // Check overlay click regions (language toggle)
+      const localHit = this.hitTestLocal(mx, my);
+      if (localHit === "btn-lang-toggle") {
+        setLang(getLang() === "de" ? "en" : "de");
+        this.renderer.accountButtonLabel = this.api.isAccount ? t("profile.account") : t("profile.login");
+        return;
+      }
       const hit = this.renderer.hitTest(mx, my);
       if (!hit) return;
       if (hit.startsWith("ship-")) this.selectedShip = parseInt(hit.split("-")[1]);
@@ -897,7 +905,7 @@ export class Game {
   private async doLogin(): Promise<void> {
     const email = this.textInputFields["email"] || "";
     const password = this.textInputFields["password"] || "";
-    if (!email || !password) { this.textInputError = "Bitte alle Felder ausfuellen"; return; }
+    if (!email || !password) { this.textInputError = t("error.fillAllFields"); return; }
 
     try {
       this.currentUser = await this.api.login(email, password);
@@ -905,7 +913,7 @@ export class Game {
       this.textInputError = "";
       this.screen = "menu";
     } catch (e: any) {
-      this.textInputError = e.message || "Anmeldung fehlgeschlagen";
+      this.textInputError = e.message || t("error.loginFailed");
     }
   }
 
@@ -914,9 +922,9 @@ export class Game {
     const username = this.textInputFields["username"] || "";
     const password = this.textInputFields["password"] || "";
     const password2 = this.textInputFields["password2"] || "";
-    if (!email || !username || !password) { this.textInputError = "Bitte alle Felder ausfuellen"; return; }
-    if (password !== password2) { this.textInputError = "Passwoerter stimmen nicht ueberein"; return; }
-    if (password.length < 6) { this.textInputError = "Passwort muss mindestens 6 Zeichen haben"; return; }
+    if (!email || !username || !password) { this.textInputError = t("error.fillAllFields"); return; }
+    if (password !== password2) { this.textInputError = t("error.passwordsMismatch"); return; }
+    if (password.length < 6) { this.textInputError = t("error.passwordTooShort"); return; }
 
     try {
       this.currentUser = await this.api.register(email, username, password);
@@ -924,7 +932,7 @@ export class Game {
       this.textInputError = "";
       this.screen = "menu";
     } catch (e: any) {
-      this.textInputError = e.message || "Registrierung fehlgeschlagen";
+      this.textInputError = e.message || t("error.registerFailed");
     }
   }
 
@@ -945,14 +953,14 @@ export class Game {
       // Search results shown as a simple overlay; for now reuse textInputMessage
       const results = await this.api.searchUsers(q);
       if (results.length === 0) {
-        this.textInputMessage = "Kein Benutzer gefunden";
+        this.textInputMessage = t("friends.noResult");
       } else {
         // Send request to first result for simplicity
         await this.api.sendFriendRequest(results[0].username);
-        this.textInputMessage = `Anfrage an ${results[0].username} gesendet!`;
+        this.textInputMessage = t("friends.requestSent", { name: results[0].username });
       }
     } catch (e: any) {
-      this.textInputError = e.message || "Suche fehlgeschlagen";
+      this.textInputError = e.message || t("error.searchFailed");
     }
   }
 
@@ -965,7 +973,7 @@ export class Game {
         this.currentUser = await this.api.initGuest();
         this.playerName = this.currentUser.displayName;
       } catch {
-        this.textInputError = "Verbindung fehlgeschlagen";
+        this.textInputError = t("error.connectionFailed");
         return;
       }
     }
@@ -1154,13 +1162,13 @@ export class Game {
 
   private async createAndJoinRoom(): Promise<void> {
     try {
-      this.lobbyStatus = "Creating room...";
+      this.lobbyStatus = t("lobby.creating");
       const res = await fetch("/api/rooms/create", { method: "POST" });
       const data = await res.json() as { roomId: string };
       this.roomCodeInput = data.roomId;
       this.joinRoom(data.roomId);
     } catch {
-      this.lobbyStatus = "Failed to create room";
+      this.lobbyStatus = t("lobby.createFailed");
     }
   }
 
@@ -1171,7 +1179,7 @@ export class Game {
     }
 
     this.activeRoomCode = roomId.toUpperCase();
-    this.lobbyStatus = `Joining room ${roomId}...`;
+    this.lobbyStatus = t("lobby.joining", { id: roomId });
     this.connection.connect(roomId);
     this.isOnline = true;
 
@@ -1183,7 +1191,7 @@ export class Game {
         const mods = this.getMods();
         const controlMode = CONTROL_MODE_OPTIONS[this.selectedControlMode];
         this.connection.send({ type: "join", name: this.playerName, shipClass: ship, mods, controlMode });
-        this.lobbyStatus = `Connected to room ${roomId}. Waiting for players...`;
+        this.lobbyStatus = t("lobby.connected", { id: roomId });
       }
     }, 100);
 
@@ -1193,7 +1201,7 @@ export class Game {
         this.connectionCheckInterval = null;
       }
       if (!this.connection.connected) {
-        this.lobbyStatus = "Connection timed out. Server may not be deployed.";
+        this.lobbyStatus = t("lobby.timeout");
       }
     }, 5000);
   }
@@ -1318,7 +1326,7 @@ export class Game {
     ctx.font = "bold 14px monospace";
     ctx.textAlign = "center";
     ctx.fillStyle = COLORS.ui;
-    ctx.fillText("EMOTES (1-8)", cx, cy - radius - 30);
+    ctx.fillText(t("emotes.title"), cx, cy - radius - 30);
 
     // Draw emote options in a circle
     const playerLevel = this.currentUser?.level ?? 1;
@@ -1348,7 +1356,7 @@ export class Game {
     if (this.emoteCooldown > 0) {
       ctx.font = "bold 12px monospace";
       ctx.fillStyle = "#ff4444";
-      ctx.fillText(`Cooldown: ${this.emoteCooldown.toFixed(1)}s`, cx, cy + radius + 35);
+      ctx.fillText(t("emotes.cooldown", { t: this.emoteCooldown.toFixed(1) }), cx, cy + radius + 35);
     }
   }
 
@@ -1373,12 +1381,12 @@ export class Game {
       this.comboCounter++;
 
       // Combo announcements (rapid multi-kills within 3s)
-      if (this.comboCounter === 2) this.showAnnouncement("Doppelkill!");
-      else if (this.comboCounter === 3) this.showAnnouncement("Triplekill!");
-      else if (this.comboCounter >= 4) this.showAnnouncement("Multi-Kill!");
+      if (this.comboCounter === 2) this.showAnnouncement(t("announce.doubleKill"));
+      else if (this.comboCounter === 3) this.showAnnouncement(t("announce.tripleKill"));
+      else if (this.comboCounter >= 4) this.showAnnouncement(t("announce.multiKill"));
       // Streak milestones (kills without dying)
-      if (this.killStreak === 5) this.showAnnouncement("Unaufhaltsam!");
-      else if (this.killStreak === 10) this.showAnnouncement("Gottgleich!");
+      if (this.killStreak === 5) this.showAnnouncement(t("announce.unstoppable"));
+      else if (this.killStreak === 10) this.showAnnouncement(t("announce.godlike"));
     }
     if (event.victimId === this.localPlayerId) {
       this.killStreak = 0;
@@ -1601,11 +1609,11 @@ export class Game {
   private getKillText(event: KillEvent): string {
     const arrow = " \u2192 ";
     switch (event.killType) {
-      case "gravity-well": return `${event.killerName}${arrow}${event.victimName} [Gravity]`;
-      case "ricochet": return `${event.killerName}${arrow}${event.victimName} [Ricochet]`;
-      case "homing": return `${event.killerName}${arrow}${event.victimName} [Homing]`;
-      case "melee": return `${event.killerName}${arrow}${event.victimName} [Nahkampf]`;
-      case "emp": return `${event.killerName}${arrow}${event.victimName} [EMP]`;
+      case "gravity-well": return `${event.killerName}${arrow}${event.victimName} ${t("killfeed.gravity")}`;
+      case "ricochet": return `${event.killerName}${arrow}${event.victimName} ${t("killfeed.ricochet")}`;
+      case "homing": return `${event.killerName}${arrow}${event.victimName} ${t("killfeed.homing")}`;
+      case "melee": return `${event.killerName}${arrow}${event.victimName} ${t("killfeed.melee")}`;
+      case "emp": return `${event.killerName}${arrow}${event.victimName} ${t("killfeed.emp")}`;
       default: return `${event.killerName}${arrow}${event.victimName}`;
     }
   }
@@ -1669,7 +1677,7 @@ export class Game {
     ctx.font = "14px monospace";
     ctx.textAlign = "center";
     ctx.fillStyle = "#ffaa00";
-    ctx.fillText(`${invite.fromName} laedt dich ein!  [Enter = Annehmen]  [Esc = Ablehnen]`, w / 2, 35);
+    ctx.fillText(t("invite.banner", { name: invite.fromName }), w / 2, 35);
   }
 
   // ===== New Screen Drawings =====
@@ -1690,7 +1698,24 @@ export class Game {
     ctx.font = "11px monospace";
     ctx.textAlign = "center";
     ctx.fillStyle = "#444444";
-    ctx.fillText("Space / F / P = Tastenkuerzel", w / 2, ctx.canvas.height - 15);
+    ctx.fillText(t("menu.shortcuts"), w / 2, ctx.canvas.height - 15);
+
+    // Language toggle (bottom-right)
+    ctx.font = "bold 12px monospace";
+    ctx.textAlign = "right";
+    const langX = w - 20;
+    const langY = ctx.canvas.height - 15;
+    const currentLang = getLang();
+    // Highlight current language
+    const deColor = currentLang === "de" ? "#ffaa00" : "#555555";
+    const enColor = currentLang === "en" ? "#ffaa00" : "#555555";
+    ctx.fillStyle = deColor;
+    ctx.fillText("DE", langX - 30, langY);
+    ctx.fillStyle = "#555555";
+    ctx.fillText("|", langX - 18, langY);
+    ctx.fillStyle = enColor;
+    ctx.fillText("EN", langX, langY);
+    this.menuClickRegions.push({ x: langX - 45, y: langY - 12, width: 50, height: 18, id: "btn-lang-toggle" });
 
     // Error message
     if (this.textInputError) {
@@ -1714,12 +1739,12 @@ export class Game {
     ctx.font = "bold 36px monospace";
     ctx.textAlign = "center";
     ctx.fillStyle = "#ffaa00";
-    ctx.fillText("RUNDE VORBEI!", w / 2, 60);
+    ctx.fillText(t("postgame.title"), w / 2, 60);
 
     if (!this.postGameData) {
       ctx.font = "16px monospace";
       ctx.fillStyle = COLORS.uiDim;
-      ctx.fillText("Lade Ergebnisse...", w / 2, 150);
+      ctx.fillText(t("postgame.loading"), w / 2, 150);
       return;
     }
 
@@ -1731,14 +1756,14 @@ export class Game {
       if (winner) {
         ctx.font = "bold 24px monospace";
         ctx.fillStyle = "#44ff88";
-        ctx.fillText(`Gewinner: ${winner.name}`, w / 2, 100);
+        ctx.fillText(t("postgame.winner", { name: winner.name }), w / 2, 100);
       }
     }
 
     // Scoreboard
     ctx.font = "bold 14px monospace";
     ctx.fillStyle = COLORS.ui;
-    const headers = ["#", "Name", "Klasse", "Kills", "Tode", "Schaden", "Genauigkeit"];
+    const headers = [t("postgame.headers.rank"), t("postgame.headers.name"), t("postgame.headers.class"), t("postgame.headers.kills"), t("postgame.headers.deaths"), t("postgame.headers.damage"), t("postgame.headers.accuracy")];
     const colX = [w / 2 - 340, w / 2 - 300, w / 2 - 160, w / 2 - 40, w / 2 + 40, w / 2 + 130, w / 2 + 260];
     ctx.textAlign = "left";
     headers.forEach((h, i) => ctx.fillText(h, colX[i], 140));
@@ -1765,8 +1790,8 @@ export class Game {
     ctx.fillText(`+${this.postGameData.xpGained} XP`, w / 2, xpY);
 
     // Buttons
-    this.drawMenuButton(ctx, w / 2 - 120, xpY + 50, 180, 40, "Nochmal!", COLORS.ui, "btn-play-again", mx, my);
-    this.drawMenuButton(ctx, w / 2 + 120, xpY + 50, 180, 40, "Hauptmenue", COLORS.uiDim, "btn-to-menu", mx, my);
+    this.drawMenuButton(ctx, w / 2 - 120, xpY + 50, 180, 40, t("postgame.playAgain"), COLORS.ui, "btn-play-again", mx, my);
+    this.drawMenuButton(ctx, w / 2 + 120, xpY + 50, 180, 40, t("postgame.toMenu"), COLORS.uiDim, "btn-to-menu", mx, my);
   }
 
   private drawFriends(): void {
@@ -1784,12 +1809,12 @@ export class Game {
     ctx.font = "bold 36px monospace";
     ctx.textAlign = "center";
     ctx.fillStyle = COLORS.ui;
-    ctx.fillText(`FREUNDE (${online}/${this.friends.length} Online)`, w / 2, 60);
+    ctx.fillText(t("friends.title", { online, total: this.friends.length }), w / 2, 60);
 
     if (this.friends.length === 0) {
       ctx.font = "16px monospace";
       ctx.fillStyle = COLORS.uiDim;
-      ctx.fillText("Noch keine Freunde. Druecke S zum Suchen.", w / 2, 150);
+      ctx.fillText(t("friends.empty"), w / 2, 150);
     }
 
     // Friend list
@@ -1819,13 +1844,13 @@ export class Game {
       ctx.font = "12px monospace";
       ctx.fillText(`Lvl ${friend.level}`, w / 2 - 100, y + 4);
 
-      const statusText = friend.presence === "offline" ? "Offline"
-        : friend.presence === "online-ingame" ? "Im Spiel" : "Online";
+      const statusText = friend.presence === "offline" ? t("friends.offline")
+        : friend.presence === "online-ingame" ? t("friends.inGame") : t("friends.online");
       ctx.fillText(statusText, w / 2 + 50, y + 4);
 
       if (friend.presence === "online-ingame" && friend.roomId) {
         ctx.fillStyle = "#44ff88";
-        ctx.fillText("[Beitreten]", w / 2 + 200, y + 4);
+        ctx.fillText(t("friends.join"), w / 2 + 200, y + 4);
         this.menuClickRegions.push({ x: w / 2 + 150, y: y - 10, width: 120, height: 20, id: `btn-join-friend-${i}` });
       }
     }
@@ -1836,20 +1861,20 @@ export class Game {
       ctx.font = "bold 16px monospace";
       ctx.textAlign = "center";
       ctx.fillStyle = "#ffaa00";
-      ctx.fillText(`Anfragen (${this.friendRequests.incoming.length})`, w / 2, reqY);
+      ctx.fillText(t("friends.requests", { n: this.friendRequests.incoming.length }), w / 2, reqY);
 
       for (let i = 0; i < this.friendRequests.incoming.length; i++) {
         const req = this.friendRequests.incoming[i];
         ctx.font = "14px monospace";
         ctx.fillStyle = "#cccccc";
-        ctx.fillText(`${req.fromUsername} moechte dein Freund sein`, w / 2, reqY + 25 + i * 25);
+        ctx.fillText(t("friends.requestText", { name: req.fromUsername }), w / 2, reqY + 25 + i * 25);
       }
     }
 
     // Bottom buttons
-    this.drawMenuButton(ctx, w / 2 - 170, h - 35, 140, 34, "Suchen", COLORS.ui, "btn-friends-search", mx, my);
-    this.drawMenuButton(ctx, w / 2, h - 35, 140, 34, "Anfragen", COLORS.nova, "btn-friends-requests", mx, my);
-    this.drawMenuButton(ctx, w / 2 + 170, h - 35, 140, 34, "Zurueck", COLORS.uiDim, "btn-friends-back", mx, my);
+    this.drawMenuButton(ctx, w / 2 - 170, h - 35, 140, 34, t("friends.searchBtn"), COLORS.ui, "btn-friends-search", mx, my);
+    this.drawMenuButton(ctx, w / 2, h - 35, 140, 34, t("friends.requestsBtn"), COLORS.nova, "btn-friends-requests", mx, my);
+    this.drawMenuButton(ctx, w / 2 + 170, h - 35, 140, 34, t("friends.back"), COLORS.uiDim, "btn-friends-back", mx, my);
 
     // Search mode overlay
     if (this.friendsSearchMode) {
@@ -1859,7 +1884,7 @@ export class Game {
       ctx.strokeRect(w / 2 - 200, h / 2 - 50, 400, 100);
       ctx.font = "14px monospace";
       ctx.fillStyle = COLORS.ui;
-      ctx.fillText("Benutzername eingeben:", w / 2, h / 2 - 20);
+      ctx.fillText(t("friends.searchPrompt"), w / 2, h / 2 - 20);
       const cursor = Math.sin(performance.now() / 300) > 0 ? "_" : "";
       ctx.fillText((this.textInputFields["search"] || "") + cursor, w / 2, h / 2 + 10);
 
@@ -1884,12 +1909,12 @@ export class Game {
     ctx.font = "bold 36px monospace";
     ctx.textAlign = "center";
     ctx.fillStyle = COLORS.ui;
-    ctx.fillText("ANMELDEN", w / 2, 80);
+    ctx.fillText(t("login.title"), w / 2, 80);
 
     // Email field
-    this.drawInputField(ctx, w / 2, 160, "E-Mail", "email", false);
+    this.drawInputField(ctx, w / 2, 160, t("login.email"), "email", false);
     // Password field
-    this.drawInputField(ctx, w / 2, 230, "Passwort", "password", true);
+    this.drawInputField(ctx, w / 2, 230, t("login.password"), "password", true);
 
     // Error
     if (this.textInputError) {
@@ -1899,13 +1924,13 @@ export class Game {
     }
 
     // Buttons
-    this.drawMenuButton(ctx, w / 2 - 160, 340, 160, 38, "Anmelden", COLORS.ui, "btn-do-login", mx, my);
-    this.drawMenuButton(ctx, w / 2, 340, 160, 38, "Registrieren", COLORS.nova, "btn-to-register", mx, my);
-    this.drawMenuButton(ctx, w / 2 + 160, 340, 130, 38, "Zurueck", COLORS.uiDim, "btn-login-back", mx, my);
+    this.drawMenuButton(ctx, w / 2 - 160, 340, 160, 38, t("login.submit"), COLORS.ui, "btn-do-login", mx, my);
+    this.drawMenuButton(ctx, w / 2, 340, 160, 38, t("login.register"), COLORS.nova, "btn-to-register", mx, my);
+    this.drawMenuButton(ctx, w / 2 + 160, 340, 130, 38, t("login.back"), COLORS.uiDim, "btn-login-back", mx, my);
     ctx.font = "12px monospace";
     ctx.textAlign = "center";
     ctx.fillStyle = COLORS.uiDim;
-    ctx.fillText("Klicke auf ein Feld und tippe den Wert ein. Tab = naechstes Feld.", w / 2, 380);
+    ctx.fillText(t("login.hint"), w / 2, 380);
   }
 
   private drawRegister(): void {
@@ -1922,12 +1947,12 @@ export class Game {
     ctx.font = "bold 36px monospace";
     ctx.textAlign = "center";
     ctx.fillStyle = COLORS.ui;
-    ctx.fillText("KONTO ERSTELLEN", w / 2, 80);
+    ctx.fillText(t("register.title"), w / 2, 80);
 
-    this.drawInputField(ctx, w / 2, 140, "E-Mail", "email", false);
-    this.drawInputField(ctx, w / 2, 210, "Benutzername", "username", false);
-    this.drawInputField(ctx, w / 2, 280, "Passwort (min. 6 Zeichen)", "password", true);
-    this.drawInputField(ctx, w / 2, 350, "Passwort wiederholen", "password2", true);
+    this.drawInputField(ctx, w / 2, 140, t("login.email"), "email", false);
+    this.drawInputField(ctx, w / 2, 210, t("register.username"), "username", false);
+    this.drawInputField(ctx, w / 2, 280, t("register.passwordHint"), "password", true);
+    this.drawInputField(ctx, w / 2, 350, t("register.passwordRepeat"), "password2", true);
 
     if (this.textInputError) {
       ctx.font = "14px monospace";
@@ -1935,13 +1960,13 @@ export class Game {
       ctx.fillText(this.textInputError, w / 2, 410);
     }
 
-    this.drawMenuButton(ctx, w / 2 - 90, 460, 180, 38, "Registrieren", COLORS.ui, "btn-do-register", mx, my);
-    this.drawMenuButton(ctx, w / 2 + 90, 460, 130, 38, "Zurueck", COLORS.uiDim, "btn-register-back", mx, my);
+    this.drawMenuButton(ctx, w / 2 - 90, 460, 180, 38, t("register.submit"), COLORS.ui, "btn-do-register", mx, my);
+    this.drawMenuButton(ctx, w / 2 + 90, 460, 130, 38, t("register.back"), COLORS.uiDim, "btn-register-back", mx, my);
 
     if (this.api.isGuest) {
       ctx.font = "12px monospace";
       ctx.fillStyle = "#44ff88";
-      ctx.fillText("Dein Gast-Fortschritt wird uebernommen!", w / 2, 500);
+      ctx.fillText(t("register.guestMigration"), w / 2, 500);
     }
   }
 
@@ -1959,7 +1984,7 @@ export class Game {
     ctx.font = "bold 36px monospace";
     ctx.textAlign = "center";
     ctx.fillStyle = COLORS.ui;
-    ctx.fillText("PROFIL", w / 2, 80);
+    ctx.fillText(t("profile.title"), w / 2, 80);
 
     if (this.currentUser) {
       ctx.font = "bold 24px monospace";
@@ -1968,12 +1993,12 @@ export class Game {
 
       ctx.font = "16px monospace";
       ctx.fillStyle = COLORS.ui;
-      ctx.fillText(`Level ${this.currentUser.level}`, w / 2, 175);
-      ctx.fillText(`Typ: ${this.currentUser.type === "account" ? "Registriert" : "Gast"}`, w / 2, 210);
+      ctx.fillText(t("profile.level", { n: this.currentUser.level }), w / 2, 175);
+      ctx.fillText(this.currentUser.type === "account" ? t("profile.typeAccount") : t("profile.typeGuest"), w / 2, 210);
     } else {
       ctx.font = "16px monospace";
       ctx.fillStyle = COLORS.uiDim;
-      ctx.fillText("Nicht angemeldet", w / 2, 150);
+      ctx.fillText(t("profile.notLoggedIn"), w / 2, 150);
     }
 
     // Challenge/Cosmetic counters
@@ -1981,26 +2006,26 @@ export class Game {
     const completedWeekly = this.weeklyChallenges.filter((c) => c.completed).length;
     ctx.font = "14px monospace";
     ctx.fillStyle = "#ffaa00";
-    ctx.fillText(`Herausforderungen: ${completedDaily}/${this.dailyChallenges.length} taeglich, ${completedWeekly}/${this.weeklyChallenges.length} woechentlich`, w / 2, 260);
+    ctx.fillText(t("profile.challenges", { done: completedDaily, total: this.dailyChallenges.length, wDone: completedWeekly, wTotal: this.weeklyChallenges.length }), w / 2, 260);
 
     ctx.fillStyle = "#ff44aa";
-    ctx.fillText(`Erfolge: ${this.unlockedAchievements.length}/${ACHIEVEMENT_CONFIGS.length}`, w / 2, 290);
+    ctx.fillText(t("profile.achievements", { done: this.unlockedAchievements.length, total: ACHIEVEMENT_CONFIGS.length }), w / 2, 290);
 
     if (this.api.isGuest) {
       ctx.font = "14px monospace";
       ctx.fillStyle = "#ffaa00";
-      ctx.fillText("Registriere dich um Freunde hinzuzufuegen und Cosmetics freizuschalten!", w / 2, 330);
+      ctx.fillText(t("profile.guestHint"), w / 2, 330);
     }
 
     // Navigation buttons
     let btnX = w / 2 - 200;
-    this.drawMenuButton(ctx, btnX, 380, 190, 38, "Herausforderungen", COLORS.ui, "btn-challenges", mx, my);
+    this.drawMenuButton(ctx, btnX, 380, 190, 38, t("profile.challengesBtn"), COLORS.ui, "btn-challenges", mx, my);
     btnX += 200;
-    this.drawMenuButton(ctx, btnX, 380, 130, 38, "Cosmetics", COLORS.nova, "btn-cosmetics", mx, my);
+    this.drawMenuButton(ctx, btnX, 380, 130, 38, t("profile.cosmeticsBtn"), COLORS.nova, "btn-cosmetics", mx, my);
     btnX += 165;
-    this.drawMenuButton(ctx, btnX, 380, 120, 38, "Zurueck", COLORS.uiDim, "btn-profile-back", mx, my);
+    this.drawMenuButton(ctx, btnX, 380, 120, 38, t("profile.backBtn"), COLORS.uiDim, "btn-profile-back", mx, my);
     if (this.api.isAccount) {
-      this.drawMenuButton(ctx, w / 2, 430, 140, 36, "Abmelden", COLORS.gravityWell, "btn-logout", mx, my);
+      this.drawMenuButton(ctx, w / 2, 430, 140, 36, t("profile.logout"), COLORS.gravityWell, "btn-logout", mx, my);
     }
   }
 
@@ -2020,18 +2045,18 @@ export class Game {
     ctx.fillStyle = COLORS.ui;
 
     const dots = ".".repeat(Math.floor(this.matchmakingTimer * 2) % 4);
-    ctx.fillText(`SUCHE MITSPIELER${dots}`, w / 2, h / 2 - 40);
+    ctx.fillText(t("matchmaking.title") + dots, w / 2, h / 2 - 40);
 
     ctx.font = "18px monospace";
     ctx.fillStyle = "#ffaa00";
-    ctx.fillText(`${this.matchmakingPlayersInQueue} Spieler in Warteschlange`, w / 2, h / 2 + 10);
+    ctx.fillText(t("matchmaking.queue", { n: this.matchmakingPlayersInQueue }), w / 2, h / 2 + 10);
 
     ctx.font = "14px monospace";
     ctx.fillStyle = COLORS.uiDim;
     const remaining = Math.max(0, 30 - Math.floor(this.matchmakingTimer));
-    ctx.fillText(`Bot-Spiel in ${remaining}s falls kein Match`, w / 2, h / 2 + 50);
+    ctx.fillText(t("matchmaking.botFallback", { s: remaining }), w / 2, h / 2 + 50);
 
-    this.drawMenuButton(ctx, w / 2, h / 2 + 90, 160, 34, "Abbrechen", COLORS.gravityWell, "btn-matchmaking-cancel", mx, my);
+    this.drawMenuButton(ctx, w / 2, h / 2 + 90, 160, 34, t("matchmaking.cancel"), COLORS.gravityWell, "btn-matchmaking-cancel", mx, my);
   }
 
   private drawInputField(
@@ -2083,12 +2108,12 @@ export class Game {
     ctx.font = "bold 36px monospace";
     ctx.textAlign = "center";
     ctx.fillStyle = COLORS.ui;
-    ctx.fillText("HERAUSFORDERUNGEN", w / 2, 60);
+    ctx.fillText(t("challenges.title"), w / 2, 60);
 
     // Daily Challenges
     ctx.font = "bold 20px monospace";
     ctx.fillStyle = "#ffaa00";
-    ctx.fillText("TAEGLICH", w / 2, 110);
+    ctx.fillText(t("challenges.daily"), w / 2, 110);
 
     for (let i = 0; i < this.dailyChallenges.length; i++) {
       const c = this.dailyChallenges[i];
@@ -2140,7 +2165,7 @@ export class Game {
     ctx.font = "bold 20px monospace";
     ctx.textAlign = "center";
     ctx.fillStyle = "#4488ff";
-    ctx.fillText("WOECHENTLICH", w / 2, weeklyY);
+    ctx.fillText(t("challenges.weekly"), w / 2, weeklyY);
 
     for (let i = 0; i < this.weeklyChallenges.length; i++) {
       const c = this.weeklyChallenges[i];
@@ -2187,7 +2212,7 @@ export class Game {
       ctx.font = "16px monospace";
       ctx.textAlign = "center";
       ctx.fillStyle = COLORS.uiDim;
-      ctx.fillText("Spiele eine Runde um Herausforderungen zu erhalten!", w / 2, 200);
+      ctx.fillText(t("challenges.empty"), w / 2, 200);
     }
 
     // Achievements section
@@ -2195,7 +2220,7 @@ export class Game {
     ctx.font = "bold 20px monospace";
     ctx.textAlign = "center";
     ctx.fillStyle = "#ff44aa";
-    ctx.fillText("ERFOLGE", w / 2, achY);
+    ctx.fillText(t("challenges.achievements"), w / 2, achY);
 
     for (let i = 0; i < ACHIEVEMENT_CONFIGS.length; i++) {
       const ach = ACHIEVEMENT_CONFIGS[i];
@@ -2224,7 +2249,7 @@ export class Game {
     }
 
     // Navigation button
-    this.drawMenuButton(ctx, w / 2, h - 35, 200, 34, "Zurueck zum Profil", COLORS.uiDim, "btn-challenges-back", mx, my);
+    this.drawMenuButton(ctx, w / 2, h - 35, 200, 34, t("challenges.back"), COLORS.uiDim, "btn-challenges-back", mx, my);
   }
 
   private drawCosmetics(): void {
@@ -2241,10 +2266,10 @@ export class Game {
     ctx.font = "bold 36px monospace";
     ctx.textAlign = "center";
     ctx.fillStyle = COLORS.ui;
-    ctx.fillText("COSMETICS", w / 2, 60);
+    ctx.fillText(t("cosmetics.title"), w / 2, 60);
 
     // Category tabs as clickable buttons
-    const categories = ["Skins", "Trails", "Effekte", "Titel"];
+    const categories = [t("cosmetics.skins"), t("cosmetics.trails"), t("cosmetics.effects"), t("cosmetics.titles")];
     const catColors = ["#ff6644", "#44aaff", "#ff44aa", "#ffaa00"];
     for (let i = 0; i < categories.length; i++) {
       const tx = w / 2 - 225 + i * 150;
@@ -2340,16 +2365,16 @@ export class Game {
       if (!unlocked) {
         ctx.font = "11px monospace";
         ctx.fillStyle = "#ff4444";
-        ctx.fillText(item.unlockLevel > 0 ? `Lvl ${item.unlockLevel}` : "Erfolg", x + 28, y + 50);
+        ctx.fillText(item.unlockLevel > 0 ? `Lvl ${item.unlockLevel}` : t("cosmetics.achievement"), x + 28, y + 50);
       } else {
         ctx.font = "11px monospace";
         ctx.fillStyle = "#44ff88";
-        ctx.fillText("Freigeschaltet", x + 28, y + 50);
+        ctx.fillText(t("cosmetics.unlocked"), x + 28, y + 50);
       }
     }
 
     // Navigation button
-    this.drawMenuButton(ctx, w / 2, h - 35, 140, 34, "Zurueck", COLORS.uiDim, "btn-cosmetics-back", mx, my);
+    this.drawMenuButton(ctx, w / 2, h - 35, 140, 34, t("cosmetics.back"), COLORS.uiDim, "btn-cosmetics-back", mx, my);
   }
 
   // ===== Existing Screen Drawings =====
@@ -2372,38 +2397,38 @@ export class Game {
     ctx.font = "bold 36px monospace";
     ctx.textAlign = "center";
     ctx.fillStyle = config.color;
-    ctx.fillText(`${config.name} - MOD LOADOUT`, w / 2, 60);
+    ctx.fillText(t("mods.loadout", { name: config.name }), w / 2, 60);
 
-    const weaponMods = ["Piercing", "Ricochet", "Gravity-Sync", "Rapid Fire"];
+    const weaponMods = [t("mods.weapon.0"), t("mods.weapon.1"), t("mods.weapon.2"), t("mods.weapon.3")];
     const weaponDescs = [
-      "Shots pass through first enemy",
-      "Shots bounce off walls",
-      "Shots curve more with gravity",
-      "+40% fire rate, -30% damage",
+      t("mods.weapon.0.desc"),
+      t("mods.weapon.1.desc"),
+      t("mods.weapon.2.desc"),
+      t("mods.weapon.3.desc"),
     ];
-    const shipMods = ["Afterburner", "Hull Plating", "Drift Master", "Gravity Anchor"];
+    const shipMods = [t("mods.ship.0"), t("mods.ship.1"), t("mods.ship.2"), t("mods.ship.3")];
     const shipDescs = [
-      "Longer boost, slower regen",
-      "+25% HP, -15% speed",
-      "Less friction, faster turns",
-      "Less affected by gravity",
+      t("mods.ship.0.desc"),
+      t("mods.ship.1.desc"),
+      t("mods.ship.2.desc"),
+      t("mods.ship.3.desc"),
     ];
-    const passiveMods = ["Scavenger", "Overcharge", "Ghost Trail", "Radar"];
+    const passiveMods = [t("mods.passive.0"), t("mods.passive.1"), t("mods.passive.2"), t("mods.passive.3")];
     const passiveDescs = [
-      "Kills drop HP pickups",
-      "3 consecutive hits = 2x damage",
-      "Leave damaging trail",
-      "See off-screen enemies",
+      t("mods.passive.0.desc"),
+      t("mods.passive.1.desc"),
+      t("mods.passive.2.desc"),
+      t("mods.passive.3.desc"),
     ];
 
-    this.drawModCategory(ctx, w / 2, 120, "WEAPON MOD", weaponMods, weaponDescs, this.selectedWeaponMod, "#ff4444", "weapon", mx, my);
-    this.drawModCategory(ctx, w / 2, 270, "SHIP MOD", shipMods, shipDescs, this.selectedShipMod, "#4488ff", "ship", mx, my);
-    this.drawModCategory(ctx, w / 2, 420, "PASSIVE MOD", passiveMods, passiveDescs, this.selectedPassiveMod, "#44ff88", "passive", mx, my);
+    this.drawModCategory(ctx, w / 2, 120, t("mods.weaponMod"), weaponMods, weaponDescs, this.selectedWeaponMod, "#ff4444", "weapon", mx, my);
+    this.drawModCategory(ctx, w / 2, 270, t("mods.shipMod"), shipMods, shipDescs, this.selectedShipMod, "#4488ff", "ship", mx, my);
+    this.drawModCategory(ctx, w / 2, 420, t("mods.passiveMod"), passiveMods, passiveDescs, this.selectedPassiveMod, "#44ff88", "passive", mx, my);
 
     ctx.font = "bold 16px monospace";
     ctx.fillStyle = "#ffaa00";
     ctx.textAlign = "center";
-    ctx.fillText("STEUERUNG", w / 2, 565);
+    ctx.fillText(t("mods.controls"), w / 2, 565);
 
     for (let i = 0; i < 2; i++) {
       const bx = w / 2 - 230 + i * 240;
@@ -2428,17 +2453,17 @@ export class Game {
 
       ctx.font = "bold 12px monospace";
       ctx.fillStyle = isSelected ? COLORS.ui : (isHovered ? COLORS.ui : COLORS.uiDim);
-      ctx.fillText(CONTROL_MODE_NAMES[i], bx + bw / 2, by + 20);
+      ctx.fillText(getControlModeNames()[i], bx + bw / 2, by + 20);
 
       ctx.font = "11px monospace";
       ctx.fillStyle = COLORS.uiDim;
-      ctx.fillText(CONTROL_MODE_DESCS[i], bx + bw / 2, by + 38);
+      ctx.fillText(getControlModeDescs()[i], bx + bw / 2, by + 38);
 
       this.menuClickRegions.push({ x: bx, y: by, width: bw, height: bh, id: regionId });
     }
 
-    this.drawMenuButton(ctx, w / 2, 665, 220, 44, "Weiter", COLORS.ui, "button-start", mx, my);
-    this.drawMenuButton(ctx, w / 2, 720, 150, 36, "Zurueck", COLORS.uiDim, "button-back", mx, my);
+    this.drawMenuButton(ctx, w / 2, 665, 220, 44, t("mods.continue"), COLORS.ui, "button-start", mx, my);
+    this.drawMenuButton(ctx, w / 2, 720, 150, 36, t("mods.back"), COLORS.uiDim, "button-back", mx, my);
   }
 
   private drawSettings(): void {
@@ -2456,11 +2481,11 @@ export class Game {
     ctx.font = "bold 36px monospace";
     ctx.textAlign = "center";
     ctx.fillStyle = COLORS.ui;
-    ctx.fillText("SPIELEINSTELLUNGEN", w / 2, 60);
+    ctx.fillText(t("settings.title"), w / 2, 60);
 
     ctx.font = "bold 18px monospace";
     ctx.fillStyle = "#ff4444";
-    ctx.fillText("BOT-SCHWIERIGKEIT", w / 2, 110);
+    ctx.fillText(t("settings.difficulty"), w / 2, 110);
 
     const diffColors = ["#44ff44", "#88ff00", "#ffaa00", "#ff6600", "#ff2222"];
     for (let i = 0; i < DIFFICULTY_PRESETS.length; i++) {
@@ -2508,7 +2533,7 @@ export class Game {
 
     ctx.font = "bold 18px monospace";
     ctx.fillStyle = "#4488ff";
-    ctx.fillText("ANZAHL BOTS", w / 2, 250);
+    ctx.fillText(t("settings.botCount"), w / 2, 250);
 
     for (let i = 1; i <= 3; i++) {
       const bx = w / 2 - 200 + (i - 1) * 140;
@@ -2540,12 +2565,12 @@ export class Game {
 
     ctx.font = "12px monospace";
     ctx.fillStyle = COLORS.uiDim;
-    ctx.fillText("Q/E = Schwierigkeit  |  W/S = Bots  |  1-5 = Schwierigkeit direkt", w / 2, 360);
+    ctx.fillText(t("settings.hint"), w / 2, 360);
 
     // Mutator selection
     ctx.font = "bold 18px monospace";
     ctx.fillStyle = "#aa88ff";
-    ctx.fillText("MUTATOREN", w / 2, 400);
+    ctx.fillText(t("settings.mutators"), w / 2, 400);
 
     const mutatorNames: Record<string, string> = {
       "hypergravity": "Hypergravity", "zero-g": "Zero-G", "big-head": "Big Head",
@@ -2592,8 +2617,8 @@ export class Game {
       this.menuClickRegions.push({ x: bx, y: by, width: bw, height: bh, id: regionId });
     }
 
-    this.drawMenuButton(ctx, w / 2, 530, 220, 44, "LOS GEHTS!", COLORS.ui, "button-start-game", mx, my);
-    this.drawMenuButton(ctx, w / 2, 585, 150, 36, "Zurueck", COLORS.uiDim, "button-settings-back", mx, my);
+    this.drawMenuButton(ctx, w / 2, 530, 220, 44, t("settings.start"), COLORS.ui, "button-start-game", mx, my);
+    this.drawMenuButton(ctx, w / 2, 585, 150, 36, t("settings.back"), COLORS.uiDim, "button-settings-back", mx, my);
   }
 
   private drawOnlineLobby(): void {
@@ -2611,14 +2636,14 @@ export class Game {
     ctx.font = "bold 36px monospace";
     ctx.textAlign = "center";
     ctx.fillStyle = COLORS.ui;
-    ctx.fillText("MULTIPLAYER LOBBY", w / 2, 80);
+    ctx.fillText(t("lobby.title"), w / 2, 80);
 
-    this.drawMenuButton(ctx, w / 2, 145, 240, 40, "Neuer Raum erstellen", COLORS.nova, "button-new-room", mx, my);
+    this.drawMenuButton(ctx, w / 2, 145, 240, 40, t("lobby.createRoom"), COLORS.nova, "button-new-room", mx, my);
 
     ctx.font = "16px monospace";
     ctx.fillStyle = COLORS.uiDim;
     ctx.textAlign = "center";
-    ctx.fillText("Oder Raum-Code eingeben:", w / 2, 220);
+    ctx.fillText(t("lobby.enterCode"), w / 2, 220);
 
     ctx.strokeStyle = COLORS.ui;
     ctx.lineWidth = 2;
@@ -2630,18 +2655,18 @@ export class Game {
 
     ctx.font = "12px monospace";
     ctx.fillStyle = COLORS.uiDim;
-    ctx.fillText("ENTER zum Beitreten", w / 2, 298);
+    ctx.fillText(t("lobby.joinHint"), w / 2, 298);
 
     if (this.activeRoomCode) {
       ctx.font = "14px monospace";
       ctx.fillStyle = COLORS.uiDim;
-      ctx.fillText("Code zum Teilen:", w / 2, 330);
+      ctx.fillText(t("lobby.shareCode"), w / 2, 330);
 
       ctx.font = "bold 32px monospace";
       ctx.fillStyle = "#ffaa00";
       ctx.fillText(this.activeRoomCode, w / 2, 368);
 
-      const copyLabel = this.copiedFeedbackTimer > 0 ? "Kopiert!" : "[ Kopieren ]";
+      const copyLabel = this.copiedFeedbackTimer > 0 ? t("lobby.copied") : t("lobby.copy");
       const copyColor = this.copiedFeedbackTimer > 0 ? "#44ff88" : COLORS.uiDim;
       const copyHovered = this.hitTestLocal(mx, my) === "button-copy-code";
       this.drawMenuButton(ctx, w / 2, 405, 140, 28, copyLabel, copyHovered ? COLORS.ui : copyColor, "button-copy-code", mx, my);
@@ -2653,7 +2678,7 @@ export class Game {
       ctx.fillText(this.lobbyStatus, w / 2, 420);
     }
 
-    this.drawMenuButton(ctx, w / 2, h - 50, 200, 36, "Zurueck", COLORS.uiDim, "button-lobby-back", mx, my);
+    this.drawMenuButton(ctx, w / 2, h - 50, 200, 36, t("lobby.back"), COLORS.uiDim, "button-lobby-back", mx, my);
   }
 
   private drawModCategory(

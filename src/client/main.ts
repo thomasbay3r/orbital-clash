@@ -1,4 +1,7 @@
 import { Game } from "./game/game";
+import { initLang } from "../shared/i18n";
+
+initLang();
 
 const canvas = document.getElementById("gameCanvas") as HTMLCanvasElement;
 if (!canvas) {

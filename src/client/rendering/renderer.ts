@@ -8,6 +8,7 @@ import {
 } from "../../shared/constants";
 import { sub, length, normalize, scale, add } from "../../shared/physics";
 import { MAPS } from "../../shared/maps";
+import { t } from "../../shared/i18n";
 
 interface Camera {
   x: number;
@@ -689,13 +690,13 @@ export class Renderer {
         const pulse = 0.7 + Math.sin(this.time * 8) * 0.3;
         ctx.globalAlpha = pulse;
         ctx.fillStyle = "#ff4444";
-        ctx.fillText("DU BIST ES! (Treffe jemanden!)", w / 2, 70);
+        ctx.fillText(t("mode.tag.youAreIt"), w / 2, 70);
         ctx.globalAlpha = 1;
       } else {
         const itPlayer = state.players[state.tagItPlayerId];
         if (itPlayer) {
           ctx.fillStyle = "#ffaa00";
-          ctx.fillText(`${itPlayer.name} ist ES!`, w / 2, 70);
+          ctx.fillText(t("mode.tag.playerIsIt", { name: itPlayer.name }), w / 2, 70);
         }
       }
     }
@@ -713,13 +714,13 @@ export class Renderer {
         const pulse = pct < 0.3 ? (0.5 + Math.sin(this.time * 15) * 0.5) : 1;
         ctx.globalAlpha = pulse;
         ctx.fillStyle = urgency;
-        ctx.fillText(`BOMBE! ${remaining.toFixed(1)}s`, w / 2, 70);
+        ctx.fillText(t("mode.potato.bomb", { t: remaining.toFixed(1) }), w / 2, 70);
         ctx.globalAlpha = 1;
       } else {
         const carrier = state.players[state.potatoCarrierId];
         if (carrier) {
           ctx.fillStyle = "#ffaa00";
-          ctx.fillText(`${carrier.name} hat die Bombe (${remaining.toFixed(1)}s)`, w / 2, 70);
+          ctx.fillText(t("mode.potato.carrierHasBomb", { name: carrier.name, t: remaining.toFixed(1) }), w / 2, 70);
         }
       }
     }
@@ -732,7 +733,7 @@ export class Renderer {
 
       // Red score
       ctx.fillStyle = myTeam === "red" ? "#ff6666" : "#ff4444";
-      ctx.fillText(`ROT: ${state.captureScores.red}`, w / 2 - 100, 70);
+      ctx.fillText(t("mode.capture.red", { score: state.captureScores.red }), w / 2 - 100, 70);
 
       // vs
       ctx.fillStyle = COLORS.uiDim;
@@ -742,13 +743,13 @@ export class Renderer {
       // Blue score
       ctx.font = "bold 20px monospace";
       ctx.fillStyle = myTeam === "blue" ? "#6688ff" : "#4488ff";
-      ctx.fillText(`BLAU: ${state.captureScores.blue}`, w / 2 + 100, 70);
+      ctx.fillText(t("mode.capture.blue", { score: state.captureScores.blue }), w / 2 + 100, 70);
 
       // Team indicator
       if (myTeam) {
         ctx.font = "12px monospace";
         ctx.fillStyle = myTeam === "red" ? "#ff4444" : "#4488ff";
-        ctx.fillText(`Dein Team: ${myTeam === "red" ? "ROT" : "BLAU"}`, w / 2, 90);
+        ctx.fillText(t("mode.capture.yourTeam", { team: myTeam === "red" ? t("mode.capture.teamRed") : t("mode.capture.teamBlue") }), w / 2, 90);
       }
     }
 
@@ -759,16 +760,16 @@ export class Renderer {
 
       if (state.wavePause) {
         ctx.fillStyle = "#44ff88";
-        ctx.fillText(`Welle ${state.waveNumber + 1} startet in ${Math.ceil(state.wavePauseTimer)}s...`, w / 2, 70);
+        ctx.fillText(t("mode.survival.waveStarting", { n: state.waveNumber + 1, s: Math.ceil(state.wavePauseTimer) }), w / 2, 70);
       } else {
         ctx.fillStyle = "#ffaa00";
-        ctx.fillText(`Welle ${state.waveNumber}  |  Gegner: ${state.waveEnemiesRemaining}`, w / 2, 70);
+        ctx.fillText(t("mode.survival.waveInfo", { n: state.waveNumber, enemies: state.waveEnemiesRemaining }), w / 2, 70);
       }
 
       // Shared lives
       ctx.font = "14px monospace";
       ctx.fillStyle = state.sharedLives <= 3 ? "#ff4444" : "#44ff88";
-      ctx.fillText(`Leben: ${state.sharedLives}`, w / 2, 92);
+      ctx.fillText(t("mode.survival.lives", { n: state.sharedLives }), w / 2, 92);
     }
 
     // Gravity Shift: active indicator
@@ -778,7 +779,7 @@ export class Renderer {
         ctx.font = "bold 14px monospace";
         ctx.textAlign = "center";
         ctx.fillStyle = COLORS.gravityWell;
-        ctx.fillText("GRAVITY SHIFT AKTIV!", w / 2, 70);
+        ctx.fillText(t("mode.gravity.active"), w / 2, 70);
       }
     }
 
@@ -788,7 +789,7 @@ export class Renderer {
       ctx.font = "12px monospace";
       ctx.textAlign = "left";
       ctx.fillStyle = "#888888";
-      ctx.fillText("Mutatoren:", 20, scoreboardEnd);
+      ctx.fillText(t("hud.mutators"), 20, scoreboardEnd);
       for (let i = 0; i < state.mutators.length; i++) {
         ctx.fillStyle = "#aa88ff";
         ctx.fillText(state.mutators[i], 20, scoreboardEnd + 14 + i * 13);
@@ -826,16 +827,16 @@ export class Renderer {
     const config = SHIP_CONFIGS[player.shipClass];
 
     // HP Bar (bottom left)
-    this.drawBar(20, h - 60, 200, 16, player.hp / player.maxHp, COLORS.hpBar, "HP");
+    this.drawBar(20, h - 60, 200, 16, player.hp / player.maxHp, COLORS.hpBar, t("hud.hp"));
 
     // Energy Bar (bottom left, below HP)
-    this.drawBar(20, h - 35, 200, 12, player.energy / player.maxEnergy, COLORS.energyBar, "ENERGY");
+    this.drawBar(20, h - 35, 200, 12, player.energy / player.maxEnergy, COLORS.energyBar, t("hud.energy"));
 
     // Special cooldown indicator (bottom center)
     const specialConfig = SPECIAL_CONFIGS[config.specialType];
     const specialPct = 1 - player.specialCooldown / (specialConfig.cooldown / 1000);
     this.drawBar(w / 2 - 60, h - 35, 120, 10, Math.max(0, specialPct), "#ff44ff",
-      player.specialCooldown <= 0 ? "READY" : "SPECIAL");
+      player.specialCooldown <= 0 ? t("hud.ready") : t("hud.special"));
 
     // Score (top center)
     ctx.font = "bold 24px monospace";
@@ -847,9 +848,9 @@ export class Renderer {
     } else if (state.gameMode === "capture-the-core") {
       // Score shown in mode HUD instead
     } else if (state.gameMode === "survival-wave") {
-      ctx.fillText(`Welle ${state.waveNumber}`, w / 2, 40);
+      ctx.fillText(t("hud.wave", { n: state.waveNumber }), w / 2, 40);
     } else {
-      ctx.fillText(`${player.score} KILLS`, w / 2, 40);
+      ctx.fillText(t("hud.kills", { n: player.score }), w / 2, 40);
     }
 
     // Timer (top right)
@@ -866,10 +867,10 @@ export class Renderer {
       ctx.textAlign = "right";
       if (copiedFeedback > 0) {
         ctx.fillStyle = "#44ff88";
-        ctx.fillText("Kopiert!", w - 20, 55);
+        ctx.fillText(t("hud.copied"), w - 20, 55);
       } else {
         ctx.fillStyle = COLORS.uiDim;
-        ctx.fillText(`Raum: ${roomCode}  [kopieren]`, w - 20, 55);
+        ctx.fillText(t("hud.room", { code: roomCode }), w - 20, 55);
       }
     }
 
@@ -886,10 +887,10 @@ export class Renderer {
       ctx.font = "bold 36px monospace";
       ctx.textAlign = "center";
       ctx.fillStyle = COLORS.ui;
-      ctx.fillText("DESTROYED", w / 2, h / 2 - 20);
+      ctx.fillText(t("hud.destroyed"), w / 2, h / 2 - 20);
       ctx.font = "18px monospace";
       ctx.fillStyle = COLORS.uiDim;
-      ctx.fillText(`Respawning in ${Math.ceil(player.respawnTimer)}...`, w / 2, h / 2 + 20);
+      ctx.fillText(t("hud.respawning", { s: Math.ceil(player.respawnTimer) }), w / 2, h / 2 + 20);
     }
 
     // Boost indicator
@@ -897,7 +898,7 @@ export class Renderer {
       ctx.font = "bold 14px monospace";
       ctx.textAlign = "center";
       ctx.fillStyle = COLORS.energyBar;
-      ctx.fillText("BOOST", w / 2, h - 55);
+      ctx.fillText(t("hud.boost"), w / 2, h - 55);
     }
   }
 
@@ -980,18 +981,18 @@ export class Renderer {
     ctx.font = "bold 48px monospace";
     ctx.textAlign = "center";
     ctx.fillStyle = COLORS.ui;
-    ctx.fillText("GAME OVER", w / 2, h / 2 - 60);
+    ctx.fillText(t("gameover.title"), w / 2, h / 2 - 60);
 
     if (state.winnerTeam) {
       ctx.font = "bold 28px monospace";
       ctx.fillStyle = state.winnerTeam === "red" ? "#ff4444" : "#4488ff";
-      ctx.fillText(`Team ${state.winnerTeam === "red" ? "ROT" : "BLAU"} gewinnt!`, w / 2, h / 2 - 10);
+      ctx.fillText(t("gameover.teamWins", { team: state.winnerTeam === "red" ? t("mode.capture.teamRed") : t("mode.capture.teamBlue") }), w / 2, h / 2 - 10);
     } else if (state.winnerId && state.players[state.winnerId]) {
       const winner = state.players[state.winnerId];
       const config = SHIP_CONFIGS[winner.shipClass];
       ctx.font = "bold 28px monospace";
       ctx.fillStyle = config.color;
-      ctx.fillText(`${winner.name} wins!`, w / 2, h / 2 - 10);
+      ctx.fillText(t("gameover.playerWins", { name: winner.name }), w / 2, h / 2 - 10);
     }
 
     // Final scores
@@ -1002,7 +1003,7 @@ export class Renderer {
       const config = SHIP_CONFIGS[p.shipClass];
       ctx.fillStyle = config.color;
       ctx.fillText(
-        `${p.name}: ${p.score} kills / ${p.deaths} deaths`,
+        t("gameover.score", { name: p.name, kills: p.score, deaths: p.deaths }),
         w / 2,
         h / 2 + 40 + i * 24,
       );
@@ -1010,7 +1011,7 @@ export class Renderer {
 
     ctx.font = "14px monospace";
     ctx.fillStyle = COLORS.uiDim;
-    ctx.fillText("Press ENTER to return to menu", w / 2, h / 2 + 40 + players.length * 24 + 30);
+    ctx.fillText(t("gameover.returnToMenu"), w / 2, h / 2 + 40 + players.length * 24 + 30);
   }
 
   drawMenu(selectedShip: number, selectedMap: number, selectedMode: number, hoveredId: string | null): void {
@@ -1042,13 +1043,13 @@ export class Renderer {
 
     ctx.font = "14px monospace";
     ctx.fillStyle = COLORS.gravityWell;
-    ctx.fillText("SPACE ARENA", w / 2, 125);
+    ctx.fillText(t("menu.subtitle"), w / 2, 125);
 
     // Ship selection
     const ships: Array<keyof typeof SHIP_CONFIGS> = ["viper", "titan", "specter", "nova"];
     ctx.font = "bold 18px monospace";
     ctx.fillStyle = COLORS.ui;
-    ctx.fillText("SELECT SHIP", w / 2, 180);
+    ctx.fillText(t("menu.selectShip"), w / 2, 180);
 
     for (let i = 0; i < ships.length; i++) {
       const ship = ships[i];
@@ -1093,7 +1094,7 @@ export class Renderer {
     ];
     ctx.font = "bold 18px monospace";
     ctx.fillStyle = COLORS.ui;
-    ctx.fillText("SELECT MAP", w / 2, 340);
+    ctx.fillText(t("menu.selectMap"), w / 2, 340);
 
     for (let i = 0; i < mapIds.length; i++) {
       const map = MAPS[mapIds[i]];
@@ -1192,18 +1193,12 @@ export class Renderer {
     const modeNames = ["Deathmatch", "King of Asteroid", "Gravity Shift", "Duel",
       "Asteroid Tag", "Survival Wave", "Hot Potato", "Capture Core"];
     const modeDescs = [
-      "Meiste Kills gewinnt",
-      "Halte die Zone",
-      "Gravitation wechselt",
-      "1v1, beste aus 5",
-      "Asteroid = HP-Verlust",
-      "Ueberlebe Wellen",
-      "Wirf die Bombe weiter!",
-      "Kern zur Basis bringen",
+      t("mode.desc.0"), t("mode.desc.1"), t("mode.desc.2"), t("mode.desc.3"),
+      t("mode.desc.4"), t("mode.desc.5"), t("mode.desc.6"), t("mode.desc.7"),
     ];
     ctx.font = "bold 18px monospace";
     ctx.fillStyle = COLORS.ui;
-    ctx.fillText("SELECT MODE", w / 2, 645);
+    ctx.fillText(t("menu.selectMode"), w / 2, 645);
 
     for (let i = 0; i < modeNames.length; i++) {
       const col = i % 4;
@@ -1239,24 +1234,24 @@ export class Renderer {
     }
 
     // Row 1: Weiter + Multiplayer + Quick Play
-    this.drawButton(ctx, w / 2 - 160, 840, 150, 40, "Weiter", COLORS.ui, "button-weiter", hoveredId);
-    this.drawButton(ctx, w / 2, 840, 150, 40, "Multiplayer", COLORS.uiDim, "button-online", hoveredId);
-    this.drawButton(ctx, w / 2 + 160, 840, 150, 40, "Quick Play", COLORS.uiDim, "button-quickplay", hoveredId);
+    this.drawButton(ctx, w / 2 - 160, 840, 150, 40, t("menu.continue"), COLORS.ui, "button-weiter", hoveredId);
+    this.drawButton(ctx, w / 2, 840, 150, 40, t("menu.multiplayer"), COLORS.uiDim, "button-online", hoveredId);
+    this.drawButton(ctx, w / 2 + 160, 840, 150, 40, t("menu.quickPlay"), COLORS.uiDim, "button-quickplay", hoveredId);
 
     // Row 2: Profil/Anmelden + Freunde
     const accountLabel = this.accountButtonLabel;
     if (accountLabel) {
       this.drawButton(ctx, w / 2 - 90, 890, 160, 32, accountLabel, "#ffaa00", "button-account", hoveredId);
     }
-    this.drawButton(ctx, w / 2 + 90, 890, 140, 32, "Freunde", COLORS.uiDim, "button-friends", hoveredId);
+    this.drawButton(ctx, w / 2 + 90, 890, 140, 32, t("menu.friends"), COLORS.uiDim, "button-friends", hoveredId);
 
     // Controls
     ctx.font = "12px monospace";
     ctx.fillStyle = COLORS.uiDim;
     ctx.textAlign = "center";
     const controls = [
-      "WASD = Move  |  Mouse = Aim  |  Left Click = Shoot",
-      "Right Click / Space = Special  |  Shift = Boost",
+      t("menu.controls1"),
+      t("menu.controls2"),
     ];
     for (let i = 0; i < controls.length; i++) {
       ctx.fillText(controls[i], w / 2, h - 50 + i * 18);
