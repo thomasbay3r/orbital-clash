@@ -1100,7 +1100,7 @@ export class Renderer {
       const col = i % 3;
       const row = Math.floor(i / 3);
       const bx = w / 2 - 250 + col * 170;
-      const by = 355 + row * 119;
+      const by = 355 + row * 128;
       const bw = 155;
       const bh = 110;
       const isSelected = i === selectedMap;
@@ -1203,13 +1203,13 @@ export class Renderer {
     ];
     ctx.font = "bold 18px monospace";
     ctx.fillStyle = COLORS.ui;
-    ctx.fillText("SELECT MODE", w / 2, 600);
+    ctx.fillText("SELECT MODE", w / 2, 620);
 
     for (let i = 0; i < modeNames.length; i++) {
       const col = i % 4;
       const row = Math.floor(i / 4);
       const bx = w / 2 - 310 + col * 155;
-      const by = 615 + row * 67;
+      const by = 637 + row * 74;
       const bw = 140;
       const bh = 58;
       const isSelected = i === selectedMode;
@@ -1239,16 +1239,16 @@ export class Renderer {
     }
 
     // Row 1: Weiter + Multiplayer + Quick Play
-    this.drawButton(ctx, w / 2 - 160, 760, 150, 40, "Weiter", COLORS.ui, "button-weiter", hoveredId);
-    this.drawButton(ctx, w / 2, 760, 150, 40, "Multiplayer", COLORS.uiDim, "button-online", hoveredId);
-    this.drawButton(ctx, w / 2 + 160, 760, 150, 40, "Quick Play", COLORS.uiDim, "button-quickplay", hoveredId);
+    this.drawButton(ctx, w / 2 - 160, 795, 150, 40, "Weiter", COLORS.ui, "button-weiter", hoveredId);
+    this.drawButton(ctx, w / 2, 795, 150, 40, "Multiplayer", COLORS.uiDim, "button-online", hoveredId);
+    this.drawButton(ctx, w / 2 + 160, 795, 150, 40, "Quick Play", COLORS.uiDim, "button-quickplay", hoveredId);
 
     // Row 2: Profil/Anmelden + Freunde
     const accountLabel = this.accountButtonLabel;
     if (accountLabel) {
-      this.drawButton(ctx, w / 2 - 90, 808, 160, 32, accountLabel, "#ffaa00", "button-account", hoveredId);
+      this.drawButton(ctx, w / 2 - 90, 842, 160, 32, accountLabel, "#ffaa00", "button-account", hoveredId);
     }
-    this.drawButton(ctx, w / 2 + 90, 808, 140, 32, "Freunde", COLORS.uiDim, "button-friends", hoveredId);
+    this.drawButton(ctx, w / 2 + 90, 842, 140, 32, "Freunde", COLORS.uiDim, "button-friends", hoveredId);
 
     // Controls
     ctx.font = "12px monospace";
