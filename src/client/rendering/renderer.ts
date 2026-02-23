@@ -51,6 +51,10 @@ export class Renderer {
     return this.clickRegions;
   }
 
+  getContext(): CanvasRenderingContext2D {
+    return this.ctx;
+  }
+
   private generateStarField(): void {
     this.starField = [];
     for (let i = 0; i < 200; i++) {
@@ -61,7 +65,18 @@ export class Renderer {
     }
   }
 
-  render(state: GameState, localPlayerId: string, dt: number, roomCode?: string, copiedFeedback = 0): void {
+  // Screen shake state
+  private shakeIntensity = 0;
+  private shakeOffsetX = 0;
+  private shakeOffsetY = 0;
+
+  /** Trigger screenshake (called from Game class) */
+  triggerShake(intensity: number): void {
+    this.shakeIntensity = Math.max(this.shakeIntensity, intensity);
+  }
+
+  render(state: GameState, localPlayerId: string, dt: number, roomCode?: string, copiedFeedback = 0,
+    extras?: { killStreak?: number; emotes?: Record<string, { text: string; timer: number }> }): void {
     this.time += dt;
     this.canvas.width = window.innerWidth;
     this.canvas.height = window.innerHeight;
@@ -71,11 +86,22 @@ export class Renderer {
       this.updateCamera(localPlayer, state);
     }
 
+    // Update screenshake
+    if (this.shakeIntensity > 0.1) {
+      this.shakeOffsetX = (Math.random() - 0.5) * this.shakeIntensity * 2;
+      this.shakeOffsetY = (Math.random() - 0.5) * this.shakeIntensity * 2;
+      this.shakeIntensity *= 0.85; // Fast decay
+    } else {
+      this.shakeIntensity = 0;
+      this.shakeOffsetX = 0;
+      this.shakeOffsetY = 0;
+    }
+
     this.ctx.save();
     this.clear();
 
-    // Apply camera transform
-    this.ctx.translate(this.canvas.width / 2, this.canvas.height / 2);
+    // Apply camera transform with screenshake offset
+    this.ctx.translate(this.canvas.width / 2 + this.shakeOffsetX, this.canvas.height / 2 + this.shakeOffsetY);
     this.ctx.scale(this.camera.zoom, this.camera.zoom);
     this.ctx.translate(-this.camera.x, -this.camera.y);
 
@@ -92,6 +118,11 @@ export class Renderer {
     this.drawParticles(state.particles);
     this.drawPlayers(state, localPlayerId);
 
+    // Draw emotes above players (in world space)
+    if (extras?.emotes) {
+      this.drawEmotes(state, extras.emotes);
+    }
+
     this.ctx.restore();
 
     // Fog-of-war overlay (mutator)
@@ -102,6 +133,11 @@ export class Renderer {
     // HUD is drawn in screen space
     if (localPlayer) {
       this.drawHUD(state, localPlayer, roomCode, copiedFeedback);
+    }
+
+    // Killstreak counter
+    if (extras?.killStreak && extras.killStreak >= 2) {
+      this.drawKillstreakHUD(extras.killStreak);
     }
 
     // Mode-specific HUD overlays
@@ -1186,5 +1222,75 @@ export class Renderer {
     ctx.fillText(label, cx, cy + (bh > 40 ? 7 : 5));
 
     this.clickRegions.push({ x: bx, y: by, width: bw, height: bh, id });
+  }
+
+  // ===== Emotes (World Space) =====
+
+  private drawEmotes(state: GameState, emotes: Record<string, { text: string; timer: number }>): void {
+    const ctx = this.ctx;
+    for (const [playerId, emote] of Object.entries(emotes)) {
+      if (emote.timer <= 0) continue;
+      const player = state.players[playerId];
+      if (!player) continue;
+
+      const alpha = Math.min(1, emote.timer);
+      const floatY = -40 - (2 - emote.timer) * 10; // Float upward as timer decreases
+
+      ctx.save();
+      ctx.globalAlpha = alpha;
+      ctx.font = "bold 20px monospace";
+      ctx.textAlign = "center";
+
+      // Speech bubble background
+      const metrics = ctx.measureText(emote.text);
+      const bw = metrics.width + 16;
+      const bh = 28;
+      const px = player.position.x;
+      const py = player.position.y;
+      const bx = px - bw / 2;
+      const by = py + floatY - bh / 2;
+
+      ctx.fillStyle = "rgba(0, 0, 0, 0.7)";
+      ctx.beginPath();
+      ctx.roundRect(bx, by, bw, bh, 6);
+      ctx.fill();
+
+      ctx.strokeStyle = COLORS.ui;
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.roundRect(bx, by, bw, bh, 6);
+      ctx.stroke();
+
+      // Emote text
+      ctx.fillStyle = "#ffffff";
+      ctx.fillText(emote.text, px, py + floatY + 6);
+      ctx.restore();
+    }
+  }
+
+  // ===== Killstreak HUD (Screen Space) =====
+
+  private drawKillstreakHUD(killStreak: number): void {
+    const ctx = this.ctx;
+    const w = this.canvas.width;
+
+    const labels: Record<number, string> = {
+      2: "DOPPELKILL!",
+      3: "TRIPLEKILL!",
+      4: "MEGA KILL!",
+      5: "ULTRA KILL!",
+    };
+    const label = killStreak >= 5 ? `${killStreak}x KILL STREAK!` : (labels[killStreak] || `${killStreak}x STREAK`);
+    const color = killStreak >= 5 ? "#ff2222" : killStreak >= 3 ? "#ffaa00" : "#ffdd44";
+
+    ctx.save();
+    ctx.font = "bold 28px monospace";
+    ctx.textAlign = "center";
+    ctx.fillStyle = color;
+    ctx.shadowColor = color;
+    ctx.shadowBlur = 15;
+    ctx.fillText(label, w / 2, 80);
+    ctx.shadowBlur = 0;
+    ctx.restore();
   }
 }

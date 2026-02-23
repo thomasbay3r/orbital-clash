@@ -15,7 +15,7 @@ import {
 import {
   SHIP_CONFIGS, COLORS, DIFFICULTY_PRESETS, DEFAULT_DIFFICULTY_INDEX,
   DRIFT_FRICTION, BOOST_MULTIPLIER,
-  SKIN_CONFIGS, TRAIL_CONFIGS, KILL_EFFECT_CONFIGS, TITLE_CONFIGS,
+  SKIN_CONFIGS, TRAIL_CONFIGS, KILL_EFFECT_CONFIGS, TITLE_CONFIGS, EMOTE_CONFIGS,
   DAILY_CHALLENGE_POOL, WEEKLY_CHALLENGE_POOL, ACHIEVEMENT_CONFIGS,
 } from "../../shared/constants";
 import { ChallengeProgress } from "../../shared/types";
@@ -148,6 +148,15 @@ export class Game {
   private challengeScrollOffset = 0;
   private cosmeticCategory = 0; // 0=skins, 1=trails, 2=effects, 3=titles
 
+  // Emote wheel state
+  private emoteWheelOpen = false;
+  private activeEmotes: Record<string, { text: string; timer: number }> = {};
+  private emoteCooldown = 0;
+
+  // Slowmo state (client-side only, last kill effect)
+  private slowmoActive = false;
+  private slowmoTimer = 0;
+
   constructor(private canvas: HTMLCanvasElement) {
     this.renderer = new Renderer(canvas);
     this.input = new InputHandler(canvas);
@@ -201,6 +210,9 @@ export class Game {
       weeklyChallenges: this.weeklyChallenges,
       unlockedAchievements: this.unlockedAchievements,
       cosmeticCategory: this.cosmeticCategory,
+      emoteWheelOpen: this.emoteWheelOpen,
+      killStreak: this.killStreak,
+      slowmoActive: this.slowmoActive,
     };
   }
 
@@ -237,6 +249,17 @@ export class Game {
     if (this.comboTimer > 0) {
       this.comboTimer -= dt;
       if (this.comboTimer <= 0) this.comboCounter = 0;
+    }
+    if (this.emoteCooldown > 0) this.emoteCooldown -= dt;
+    if (this.slowmoTimer > 0) {
+      this.slowmoTimer -= dt;
+      if (this.slowmoTimer <= 0) this.slowmoActive = false;
+    }
+
+    // Expire emote displays
+    for (const [id, emote] of Object.entries(this.activeEmotes)) {
+      emote.timer -= dt;
+      if (emote.timer <= 0) delete this.activeEmotes[id];
     }
 
     // Expire old kill feed entries
@@ -441,6 +464,19 @@ export class Game {
       if (key === "t" && !this.gameState?.gameOver) {
         this.chatOpen = true;
         this.chatInput = "";
+        return;
+      }
+      if (key === "v" && !this.gameState?.gameOver && !this.chatOpen) {
+        this.emoteWheelOpen = !this.emoteWheelOpen;
+        return;
+      }
+      if (this.emoteWheelOpen && key >= "1" && key <= "8") {
+        this.sendEmote(parseInt(key) - 1);
+        this.emoteWheelOpen = false;
+        return;
+      }
+      if (key === "escape" && this.emoteWheelOpen) {
+        this.emoteWheelOpen = false;
         return;
       }
       if (key === "enter" && this.gameState?.gameOver) {
@@ -971,6 +1007,11 @@ export class Game {
     this.postGameData = null;
     this.chatMessages = [];
     this.selectedMutators = [];
+    this.emoteWheelOpen = false;
+    this.activeEmotes = {};
+    this.emoteCooldown = 0;
+    this.slowmoActive = false;
+    this.slowmoTimer = 0;
   }
 
   // ===== Local Game =====
@@ -1090,7 +1131,8 @@ export class Game {
       }
 
       this.processAudioEvents();
-      this.renderer.render(this.gameState, this.localPlayerId, dt, this.activeRoomCode, this.copiedFeedbackTimer);
+      const extras = { killStreak: this.killStreak, emotes: this.activeEmotes };
+      this.renderer.render(this.gameState, this.localPlayerId, dt, this.activeRoomCode, this.copiedFeedbackTimer, extras);
     } else {
       const inputs: Record<string, PlayerInput> = {};
       inputs[this.localPlayerId] = this.input.getInput();
@@ -1098,13 +1140,24 @@ export class Game {
         inputs[bot.id] = bot.getInput(this.gameState);
       }
 
-      simulateTick(this.gameState, inputs, dt);
+      // Apply slowmo effect
+      const wasGameOver = this.gameState.gameOver;
+      const effectiveDt = this.slowmoActive ? dt * 0.3 : dt;
+      simulateTick(this.gameState, inputs, effectiveDt);
+
+      // Trigger slowmo on last kill (game just ended)
+      if (this.gameState.gameOver && !wasGameOver) {
+        this.slowmoActive = true;
+        this.slowmoTimer = 0.8;
+        this.renderer.triggerShake(16);
+      }
 
       // Process new kill events from simulation
       this.processLocalKillFeed();
 
       this.processAudioEvents();
-      this.renderer.render(this.gameState, this.localPlayerId, dt);
+      const extras = { killStreak: this.killStreak, emotes: this.activeEmotes };
+      this.renderer.render(this.gameState, this.localPlayerId, dt, undefined, 0, extras);
     }
 
     // Draw kill feed overlay
@@ -1123,6 +1176,74 @@ export class Game {
     // Draw invite banner if applicable
     if (this.invites.length > 0) {
       this.drawInviteBanner();
+    }
+
+    // Draw emote wheel overlay
+    if (this.emoteWheelOpen) {
+      this.drawEmoteWheel();
+    }
+  }
+
+  private sendEmote(index: number): void {
+    if (this.emoteCooldown > 0) return;
+    const emoteConfigs = EMOTE_CONFIGS;
+    if (index >= emoteConfigs.length) return;
+
+    const emote = emoteConfigs[index];
+    this.activeEmotes[this.localPlayerId] = { text: emote.text, timer: 2 };
+    this.emoteCooldown = 3; // 3s cooldown
+  }
+
+  private drawEmoteWheel(): void {
+    const ctx = this.renderer.getContext();
+    const w = this.canvas.width;
+    const h = this.canvas.height;
+    const cx = w / 2;
+    const cy = h / 2;
+    const radius = 120;
+
+    // Semi-transparent backdrop
+    ctx.fillStyle = "rgba(0, 0, 0, 0.5)";
+    ctx.fillRect(0, 0, w, h);
+
+    // Wheel background
+    ctx.beginPath();
+    ctx.arc(cx, cy, radius + 20, 0, Math.PI * 2);
+    ctx.fillStyle = "rgba(0, 0, 0, 0.8)";
+    ctx.fill();
+    ctx.strokeStyle = COLORS.ui;
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    // Title
+    ctx.font = "bold 14px monospace";
+    ctx.textAlign = "center";
+    ctx.fillStyle = COLORS.ui;
+    ctx.fillText("EMOTES (1-8)", cx, cy - radius - 30);
+
+    // Draw emote options in a circle
+    const emoteConfigs = EMOTE_CONFIGS;
+    const count = Math.min(emoteConfigs.length, 8);
+    for (let i = 0; i < count; i++) {
+      const angle = (i / count) * Math.PI * 2 - Math.PI / 2;
+      const ex = cx + Math.cos(angle) * radius;
+      const ey = cy + Math.sin(angle) * radius;
+
+      // Number label
+      ctx.font = "bold 12px monospace";
+      ctx.fillStyle = "#888888";
+      ctx.fillText(`${i + 1}`, ex, ey - 14);
+
+      // Emote text
+      ctx.font = "bold 16px monospace";
+      ctx.fillStyle = this.emoteCooldown > 0 ? "#555555" : "#ffffff";
+      ctx.fillText(emoteConfigs[i].text, ex, ey + 4);
+    }
+
+    if (this.emoteCooldown > 0) {
+      ctx.font = "bold 12px monospace";
+      ctx.fillStyle = "#ff4444";
+      ctx.fillText(`Cooldown: ${this.emoteCooldown.toFixed(1)}s`, cx, cy + radius + 35);
     }
   }
 
@@ -1243,12 +1364,16 @@ export class Game {
       const wasAlive = this.prevAliveStates[player.id];
       if (wasAlive && !player.alive) {
         this.audio.playExplosion();
+        this.renderer.triggerShake(12); // Big shake on death
       }
       this.prevAliveStates[player.id] = player.alive;
 
       const prevHp = this.prevPlayerHps[player.id] ?? player.maxHp;
       if (player.hp < prevHp && player.alive) {
         this.audio.playHit();
+        if (player.id === this.localPlayerId) {
+          this.renderer.triggerShake(4); // Small shake when local player takes damage
+        }
       }
       this.prevPlayerHps[player.id] = player.hp;
     }

@@ -47,7 +47,7 @@ e2e/
   helpers.ts             # E2E test utilities (getTestState, waitForScreen)
   menu-flow.spec.ts      # Menu navigation E2E tests (20 tests)
   gameplay.spec.ts       # Gameplay E2E tests (16 tests)
-  social-screens.spec.ts # Social screen navigation E2E tests (16 tests)
+  social-screens.spec.ts # Social screen navigation E2E tests (21 tests)
 public/
   index.html             # HTML entry point with canvas
 ```
@@ -119,6 +119,12 @@ The core game loop (`game-simulation.ts`) is shared between client and server.
 - **Achievements**: 10 unique milestones with cosmetic rewards
 - Challenges/cosmetics screens accessible from profile (C/K keys)
 
+### Game Feel / Polish
+- **Screenshake**: Camera shake on death (large) and local player damage (small), fast 0.85 decay
+- **Slowmo**: 0.8s slowmo effect when game ends (last kill), client-side only
+- **Killstreak HUD**: Shows streak counter (Doppelkill, Triplekill, etc.) when streak >= 2
+- **Emote Wheel**: V key opens radial menu with 8 emotes, 1-8 to select, 3s cooldown, 2s display above ship
+
 ### Social Features
 - **Friends**: Add/remove, search by username, recent players, online presence
 - **Presence**: KV-based polling (120s TTL heartbeat, 30s client interval)
@@ -142,6 +148,7 @@ Additional screens (from menu):
   Space → Quick Play (matchmaking)
 Profile sub-screens:
   C → Challenges  |  K → Cosmetics
+In-game: V → Emote Wheel (1-8 to select, Esc to close)
 Post-game: Scoreboard → Enter=Rematch  |  Esc=Menu
 ```
 
