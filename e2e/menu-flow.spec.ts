@@ -19,7 +19,15 @@ test.describe("Menu Flow", () => {
     expect(screenshot.byteLength).toBeGreaterThan(1000);
   });
 
-  test("keyboard 1-4 selects ships", async ({ page }) => {
+  test("Enter navigates to game-config", async ({ page }) => {
+    await page.keyboard.press("Enter");
+    await waitForScreen(page, "game-config");
+  });
+
+  test("keyboard 1-4 selects ships in game-config", async ({ page }) => {
+    await page.keyboard.press("Enter"); // hub → game-config
+    await waitForScreen(page, "game-config");
+
     await page.keyboard.press("2");
     let state = await getTestState(page);
     expect(state.selectedShip).toBe(1); // 0-indexed: key "2" → index 1 (Titan)
@@ -29,7 +37,10 @@ test.describe("Menu Flow", () => {
     expect(state.selectedShip).toBe(3); // Nova
   });
 
-  test("Q/E cycles maps", async ({ page }) => {
+  test("Q/E cycles maps in game-config", async ({ page }) => {
+    await page.keyboard.press("Enter"); // hub → game-config
+    await waitForScreen(page, "game-config");
+
     const initial = (await getTestState(page)).selectedMap;
     expect(initial).toBe(0);
 
@@ -46,7 +57,10 @@ test.describe("Menu Flow", () => {
     expect(state.selectedMap).toBe(1);
   });
 
-  test("Z/C cycles modes", async ({ page }) => {
+  test("Z/C cycles modes in game-config", async ({ page }) => {
+    await page.keyboard.press("Enter"); // hub → game-config
+    await waitForScreen(page, "game-config");
+
     await page.keyboard.press("c");
     let state = await getTestState(page);
     expect(state.selectedMode).toBe(1);
@@ -60,28 +74,33 @@ test.describe("Menu Flow", () => {
     expect(state.selectedMode).toBe(1);
   });
 
-  test("Enter navigates to mod-select", async ({ page }) => {
-    await page.keyboard.press("Enter");
+  test("game-config Enter navigates to mod-select", async ({ page }) => {
+    await page.keyboard.press("Enter"); // hub → game-config
+    await waitForScreen(page, "game-config");
+
+    await page.keyboard.press("Enter"); // game-config → mod-select
     await waitForScreen(page, "mod-select");
   });
 
-  test("M navigates to mod-select with online flow", async ({ page }) => {
-    await page.keyboard.press("m");
-    await waitForScreen(page, "mod-select");
-    const state = await getTestState(page);
-    expect(state.isOnline).toBe(false); // not online yet, just in flow
+  test("M from hub navigates to game-config with online flow", async ({ page }) => {
+    await page.keyboard.press("m"); // hub → game-config (online flow)
+    await waitForScreen(page, "game-config");
   });
 
-  test("mod-select → Escape returns to menu", async ({ page }) => {
-    await page.keyboard.press("Enter");
+  test("mod-select → Escape returns to game-config", async ({ page }) => {
+    await page.keyboard.press("Enter"); // hub → game-config
+    await waitForScreen(page, "game-config");
+    await page.keyboard.press("Enter"); // game-config → mod-select
     await waitForScreen(page, "mod-select");
 
     await page.keyboard.press("Escape");
-    await waitForScreen(page, "menu");
+    await waitForScreen(page, "game-config");
   });
 
   test("mod-select → Enter goes to settings (local flow)", async ({ page }) => {
-    await page.keyboard.press("Enter"); // menu → mod-select
+    await page.keyboard.press("Enter"); // hub → game-config
+    await waitForScreen(page, "game-config");
+    await page.keyboard.press("Enter"); // game-config → mod-select
     await waitForScreen(page, "mod-select");
 
     await page.keyboard.press("Enter"); // mod-select → settings
@@ -89,9 +108,11 @@ test.describe("Menu Flow", () => {
   });
 
   test("settings → Escape returns to mod-select", async ({ page }) => {
-    await page.keyboard.press("Enter");
+    await page.keyboard.press("Enter"); // hub → game-config
+    await waitForScreen(page, "game-config");
+    await page.keyboard.press("Enter"); // game-config → mod-select
     await waitForScreen(page, "mod-select");
-    await page.keyboard.press("Enter");
+    await page.keyboard.press("Enter"); // mod-select → settings
     await waitForScreen(page, "settings");
 
     await page.keyboard.press("Escape");
@@ -100,9 +121,11 @@ test.describe("Menu Flow", () => {
 
   test("settings difficulty selection via keyboard", async ({ page }) => {
     // Navigate to settings
-    await page.keyboard.press("Enter");
+    await page.keyboard.press("Enter"); // hub → game-config
+    await waitForScreen(page, "game-config");
+    await page.keyboard.press("Enter"); // game-config → mod-select
     await waitForScreen(page, "mod-select");
-    await page.keyboard.press("Enter");
+    await page.keyboard.press("Enter"); // mod-select → settings
     await waitForScreen(page, "settings");
 
     // Default difficulty is index 2 (Kopfgeldjäger)
@@ -126,9 +149,11 @@ test.describe("Menu Flow", () => {
   });
 
   test("settings bot count selection via keyboard", async ({ page }) => {
-    await page.keyboard.press("Enter");
+    await page.keyboard.press("Enter"); // hub → game-config
+    await waitForScreen(page, "game-config");
+    await page.keyboard.press("Enter"); // game-config → mod-select
     await waitForScreen(page, "mod-select");
-    await page.keyboard.press("Enter");
+    await page.keyboard.press("Enter"); // mod-select → settings
     await waitForScreen(page, "settings");
 
     // Default bot count is 3
@@ -156,7 +181,9 @@ test.describe("Menu Flow", () => {
   });
 
   test("Tab cycles control mode in mod-select", async ({ page }) => {
-    await page.keyboard.press("Enter");
+    await page.keyboard.press("Enter"); // hub → game-config
+    await waitForScreen(page, "game-config");
+    await page.keyboard.press("Enter"); // game-config → mod-select
     await waitForScreen(page, "mod-select");
 
     let state = await getTestState(page);
@@ -171,10 +198,13 @@ test.describe("Menu Flow", () => {
     expect(state.selectedControlMode).toBe(0); // wraps back
   });
 
-  test("full local flow: menu → mod-select → settings → playing", async ({ page }) => {
+  test("full local flow: hub → game-config → mod-select → settings → playing", async ({ page }) => {
+    await page.keyboard.press("Enter"); // hub → game-config
+    await waitForScreen(page, "game-config");
+
     // Select ship + enter
     await page.keyboard.press("3"); // Specter
-    await page.keyboard.press("Enter");
+    await page.keyboard.press("Enter"); // game-config → mod-select
     await waitForScreen(page, "mod-select");
 
     // Continue to settings
@@ -191,8 +221,11 @@ test.describe("Menu Flow", () => {
     expect(state.isOnline).toBe(false);
   });
 
-  test("online flow: menu → mod-select → online-lobby", async ({ page }) => {
-    await page.keyboard.press("m"); // online flow
+  test("online flow: hub → game-config → mod-select → online-lobby", async ({ page }) => {
+    await page.keyboard.press("m"); // hub → game-config (online flow)
+    await waitForScreen(page, "game-config");
+
+    await page.keyboard.press("Enter"); // game-config → mod-select
     await waitForScreen(page, "mod-select");
 
     await page.keyboard.press("Enter"); // mod-select → online-lobby
@@ -200,9 +233,11 @@ test.describe("Menu Flow", () => {
   });
 
   test("online-lobby → Escape returns to mod-select", async ({ page }) => {
-    await page.keyboard.press("m");
+    await page.keyboard.press("m"); // hub → game-config (online flow)
+    await waitForScreen(page, "game-config");
+    await page.keyboard.press("Enter"); // game-config → mod-select
     await waitForScreen(page, "mod-select");
-    await page.keyboard.press("Enter");
+    await page.keyboard.press("Enter"); // mod-select → online-lobby
     await waitForScreen(page, "online-lobby");
 
     await page.keyboard.press("Escape");
@@ -210,6 +245,8 @@ test.describe("Menu Flow", () => {
   });
 
   test("map cycling wraps around (E past last → first)", async ({ page }) => {
+    await page.keyboard.press("Enter"); // hub → game-config
+    await waitForScreen(page, "game-config");
     // 6 maps: 0..5 → wraps to 0
     for (let i = 0; i < 6; i++) await page.keyboard.press("e");
     const state = await getTestState(page);
@@ -217,6 +254,8 @@ test.describe("Menu Flow", () => {
   });
 
   test("map cycling wraps around (Q past first → last)", async ({ page }) => {
+    await page.keyboard.press("Enter"); // hub → game-config
+    await waitForScreen(page, "game-config");
     // From 0, Q should wrap to 5
     await page.keyboard.press("q");
     const state = await getTestState(page);
@@ -224,6 +263,8 @@ test.describe("Menu Flow", () => {
   });
 
   test("mode cycling wraps around (C past last → first)", async ({ page }) => {
+    await page.keyboard.press("Enter"); // hub → game-config
+    await waitForScreen(page, "game-config");
     // 8 modes: 0..7 → wraps to 0
     for (let i = 0; i < 8; i++) await page.keyboard.press("c");
     const state = await getTestState(page);
@@ -231,6 +272,8 @@ test.describe("Menu Flow", () => {
   });
 
   test("mode cycling wraps around (Z past first → last)", async ({ page }) => {
+    await page.keyboard.press("Enter"); // hub → game-config
+    await waitForScreen(page, "game-config");
     // From 0, Z should wrap to 7
     await page.keyboard.press("z");
     const state = await getTestState(page);

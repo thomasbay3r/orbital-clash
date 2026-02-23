@@ -64,7 +64,9 @@ test.describe("Kill Feed & Post-Game State", () => {
 
   test("game state includes killFeed array", async ({ page }) => {
     // Start a local game
-    await page.keyboard.press("Enter"); // menu → mod-select
+    await page.keyboard.press("Enter"); // hub → game-config
+    await waitForScreen(page, "game-config");
+    await page.keyboard.press("Enter"); // game-config → mod-select
     await waitForScreen(page, "mod-select");
     await page.keyboard.press("Enter"); // mod-select → settings
     await waitForScreen(page, "settings");
@@ -141,11 +143,13 @@ test.describe("Challenges & Cosmetics Screens", () => {
 
   test("challenges are initialized after playing a game", async ({ page }) => {
     // Start and play a quick game
-    await page.keyboard.press("Enter");
+    await page.keyboard.press("Enter"); // hub → game-config
+    await waitForScreen(page, "game-config");
+    await page.keyboard.press("Enter"); // game-config → mod-select
     await waitForScreen(page, "mod-select");
-    await page.keyboard.press("Enter");
+    await page.keyboard.press("Enter"); // mod-select → settings
     await waitForScreen(page, "settings");
-    await page.keyboard.press("Enter");
+    await page.keyboard.press("Enter"); // settings → playing
     await waitForScreen(page, "playing");
 
     // Check that challenges were initialized
@@ -169,11 +173,13 @@ test.describe("Polish Features (Phase 4)", () => {
 
   test("emote wheel starts closed", async ({ page }) => {
     // Start a local game
-    await page.keyboard.press("Enter");
+    await page.keyboard.press("Enter"); // hub → game-config
+    await waitForScreen(page, "game-config");
+    await page.keyboard.press("Enter"); // game-config → mod-select
     await waitForScreen(page, "mod-select");
-    await page.keyboard.press("Enter");
+    await page.keyboard.press("Enter"); // mod-select → settings
     await waitForScreen(page, "settings");
-    await page.keyboard.press("Enter");
+    await page.keyboard.press("Enter"); // settings → playing
     await waitForScreen(page, "playing");
 
     const state = await getTestState(page);
@@ -181,11 +187,13 @@ test.describe("Polish Features (Phase 4)", () => {
   });
 
   test("V key toggles emote wheel during gameplay", async ({ page }) => {
-    await page.keyboard.press("Enter");
+    await page.keyboard.press("Enter"); // hub → game-config
+    await waitForScreen(page, "game-config");
+    await page.keyboard.press("Enter"); // game-config → mod-select
     await waitForScreen(page, "mod-select");
-    await page.keyboard.press("Enter");
+    await page.keyboard.press("Enter"); // mod-select → settings
     await waitForScreen(page, "settings");
-    await page.keyboard.press("Enter");
+    await page.keyboard.press("Enter"); // settings → playing
     await waitForScreen(page, "playing");
 
     await page.keyboard.press("v");
@@ -198,11 +206,13 @@ test.describe("Polish Features (Phase 4)", () => {
   });
 
   test("Escape closes emote wheel", async ({ page }) => {
-    await page.keyboard.press("Enter");
+    await page.keyboard.press("Enter"); // hub → game-config
+    await waitForScreen(page, "game-config");
+    await page.keyboard.press("Enter"); // game-config → mod-select
     await waitForScreen(page, "mod-select");
-    await page.keyboard.press("Enter");
+    await page.keyboard.press("Enter"); // mod-select → settings
     await waitForScreen(page, "settings");
-    await page.keyboard.press("Enter");
+    await page.keyboard.press("Enter"); // settings → playing
     await waitForScreen(page, "playing");
 
     await page.keyboard.press("v");
@@ -215,11 +225,13 @@ test.describe("Polish Features (Phase 4)", () => {
   });
 
   test("killStreak starts at zero", async ({ page }) => {
-    await page.keyboard.press("Enter");
+    await page.keyboard.press("Enter"); // hub → game-config
+    await waitForScreen(page, "game-config");
+    await page.keyboard.press("Enter"); // game-config → mod-select
     await waitForScreen(page, "mod-select");
-    await page.keyboard.press("Enter");
+    await page.keyboard.press("Enter"); // mod-select → settings
     await waitForScreen(page, "settings");
-    await page.keyboard.press("Enter");
+    await page.keyboard.press("Enter"); // settings → playing
     await waitForScreen(page, "playing");
 
     const state = await getTestState(page);
@@ -227,11 +239,13 @@ test.describe("Polish Features (Phase 4)", () => {
   });
 
   test("slowmo starts inactive", async ({ page }) => {
-    await page.keyboard.press("Enter");
+    await page.keyboard.press("Enter"); // hub → game-config
+    await waitForScreen(page, "game-config");
+    await page.keyboard.press("Enter"); // game-config → mod-select
     await waitForScreen(page, "mod-select");
-    await page.keyboard.press("Enter");
+    await page.keyboard.press("Enter"); // mod-select → settings
     await waitForScreen(page, "settings");
-    await page.keyboard.press("Enter");
+    await page.keyboard.press("Enter"); // settings → playing
     await waitForScreen(page, "playing");
 
     const state = await getTestState(page);

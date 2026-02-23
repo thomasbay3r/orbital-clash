@@ -1,9 +1,11 @@
 import { test, expect } from "@playwright/test";
 import { getTestState, waitForScreen, waitForGameReady } from "./helpers";
 
-/** Navigate from menu through to playing screen */
+/** Navigate from hub through to playing screen */
 async function startLocalGame(page: import("@playwright/test").Page) {
-  await page.keyboard.press("Enter"); // menu → mod-select
+  await page.keyboard.press("Enter"); // hub → game-config
+  await waitForScreen(page, "game-config");
+  await page.keyboard.press("Enter"); // game-config → mod-select
   await waitForScreen(page, "mod-select");
   await page.keyboard.press("Enter"); // mod-select → settings
   await waitForScreen(page, "settings");
@@ -53,7 +55,10 @@ test.describe("Gameplay", () => {
   });
 
   test("duel mode uses exactly 1 bot", async ({ page }) => {
-    // Select duel mode (index 3)
+    // Enter game-config first, then select duel mode (index 3)
+    await page.keyboard.press("Enter"); // hub → game-config
+    await waitForScreen(page, "game-config");
+
     await page.keyboard.press("c"); // mode 1
     await page.keyboard.press("c"); // mode 2
     await page.keyboard.press("c"); // mode 3 (duel)
@@ -61,7 +66,13 @@ test.describe("Gameplay", () => {
     let state = await getTestState(page);
     expect(state.selectedMode).toBe(3);
 
-    await startLocalGame(page);
+    // Continue from game-config (startLocalGame expects hub, so go manually)
+    await page.keyboard.press("Enter"); // game-config → mod-select
+    await waitForScreen(page, "mod-select");
+    await page.keyboard.press("Enter"); // mod-select → settings
+    await waitForScreen(page, "settings");
+    await page.keyboard.press("Enter"); // settings → playing
+    await waitForScreen(page, "playing");
 
     state = await getTestState(page);
     expect(state.gameState.gameMode).toBe("duel");
@@ -70,9 +81,18 @@ test.describe("Gameplay", () => {
   });
 
   test("different ship selections affect player config", async ({ page }) => {
-    // Select Titan (index 1)
+    // Enter game-config, then select Titan (index 1)
+    await page.keyboard.press("Enter"); // hub → game-config
+    await waitForScreen(page, "game-config");
     await page.keyboard.press("2");
-    await startLocalGame(page);
+
+    // Continue from game-config
+    await page.keyboard.press("Enter"); // game-config → mod-select
+    await waitForScreen(page, "mod-select");
+    await page.keyboard.press("Enter"); // mod-select → settings
+    await waitForScreen(page, "settings");
+    await page.keyboard.press("Enter"); // settings → playing
+    await waitForScreen(page, "playing");
 
     const state = await getTestState(page);
     const localPlayer = state.gameState.players["local-player"];
@@ -140,7 +160,9 @@ test.describe("Gameplay", () => {
   });
 
   test("bot count setting affects game", async ({ page }) => {
-    await page.keyboard.press("Enter"); // menu → mod-select
+    await page.keyboard.press("Enter"); // hub → game-config
+    await waitForScreen(page, "game-config");
+    await page.keyboard.press("Enter"); // game-config → mod-select
     await waitForScreen(page, "mod-select");
     await page.keyboard.press("Enter"); // mod-select → settings
     await waitForScreen(page, "settings");
@@ -161,7 +183,9 @@ test.describe("Gameplay", () => {
   });
 
   test("mod selection persists into gameplay", async ({ page }) => {
-    await page.keyboard.press("Enter"); // menu → mod-select
+    await page.keyboard.press("Enter"); // hub → game-config
+    await waitForScreen(page, "game-config");
+    await page.keyboard.press("Enter"); // game-config → mod-select
     await waitForScreen(page, "mod-select");
 
     // Select weapon mod 2 (gravity-sync, index 1 = key "2")
@@ -186,35 +210,59 @@ test.describe("Gameplay", () => {
   });
 
   test("king-of-the-asteroid mode starts correctly", async ({ page }) => {
+    await page.keyboard.press("Enter"); // hub → game-config
+    await waitForScreen(page, "game-config");
     await page.keyboard.press("c"); // mode 0→1 (king-of-the-asteroid)
 
     const menuState = await getTestState(page);
     expect(menuState.selectedMode).toBe(1);
 
-    await startLocalGame(page);
+    // Continue from game-config
+    await page.keyboard.press("Enter"); // game-config → mod-select
+    await waitForScreen(page, "mod-select");
+    await page.keyboard.press("Enter"); // mod-select → settings
+    await waitForScreen(page, "settings");
+    await page.keyboard.press("Enter"); // settings → playing
+    await waitForScreen(page, "playing");
 
     const state = await getTestState(page);
     expect(state.gameState.gameMode).toBe("king-of-the-asteroid");
   });
 
   test("gravity-shift mode starts correctly", async ({ page }) => {
+    await page.keyboard.press("Enter"); // hub → game-config
+    await waitForScreen(page, "game-config");
     await page.keyboard.press("c"); // mode 0→1
     await page.keyboard.press("c"); // mode 1→2 (gravity-shift)
 
     const menuState = await getTestState(page);
     expect(menuState.selectedMode).toBe(2);
 
-    await startLocalGame(page);
+    // Continue from game-config
+    await page.keyboard.press("Enter"); // game-config → mod-select
+    await waitForScreen(page, "mod-select");
+    await page.keyboard.press("Enter"); // mod-select → settings
+    await waitForScreen(page, "settings");
+    await page.keyboard.press("Enter"); // settings → playing
+    await waitForScreen(page, "playing");
 
     const state = await getTestState(page);
     expect(state.gameState.gameMode).toBe("gravity-shift");
   });
 
   test("map selection affects game state", async ({ page }) => {
+    await page.keyboard.press("Enter"); // hub → game-config
+    await waitForScreen(page, "game-config");
     // Select asteroid-belt (index 1)
     await page.keyboard.press("e"); // map 0→1
 
-    await startLocalGame(page);
+    // Continue from game-config
+    await page.keyboard.press("Enter"); // game-config → mod-select
+    await waitForScreen(page, "mod-select");
+    await page.keyboard.press("Enter"); // mod-select → settings
+    await waitForScreen(page, "settings");
+    await page.keyboard.press("Enter"); // settings → playing
+    await waitForScreen(page, "playing");
 
     const state = await getTestState(page);
     expect(state.gameState.mapId).toBe("asteroid-belt");
@@ -223,7 +271,9 @@ test.describe("Gameplay", () => {
   });
 
   test("control mode selection persists into gameplay", async ({ page }) => {
-    await page.keyboard.press("Enter"); // menu → mod-select
+    await page.keyboard.press("Enter"); // hub → game-config
+    await waitForScreen(page, "game-config");
+    await page.keyboard.press("Enter"); // game-config → mod-select
     await waitForScreen(page, "mod-select");
 
     // Switch to ship-relative

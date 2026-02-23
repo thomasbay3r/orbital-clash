@@ -26,7 +26,7 @@ import {
 import { MAPS } from "../../shared/maps";
 import { t, getLang, setLang } from "../../shared/i18n";
 
-type Screen = "menu" | "mod-select" | "settings" | "playing" | "online-lobby"
+type Screen = "menu" | "game-config" | "mod-select" | "settings" | "playing" | "online-lobby"
   | "friends" | "login" | "register" | "profile" | "post-game" | "matchmaking"
   | "challenges" | "cosmetics";
 
@@ -279,7 +279,13 @@ export class Game {
       case "menu": {
         this.renderer.accountButtonLabel = this.api.isAccount ? t("profile.account") : t("profile.login");
         const hovered = this.renderer.hitTest(mx, my);
-        this.renderer.drawMenu(this.selectedShip, this.selectedMap, this.selectedMode, hovered);
+        this.renderer.drawHub(hovered);
+        this.drawMenuOverlay(mx, my);
+        break;
+      }
+      case "game-config": {
+        const hovered2 = this.renderer.hitTest(mx, my);
+        this.renderer.drawGameConfig(this.selectedShip, this.selectedMap, this.selectedMode, hovered2, mx, my, this.onlineFlow);
         this.drawMenuOverlay(mx, my);
         break;
       }
@@ -348,20 +354,13 @@ export class Game {
     }
 
     if (this.screen === "menu") {
-      if (key === "1") this.selectedShip = 0;
-      if (key === "2") this.selectedShip = 1;
-      if (key === "3") this.selectedShip = 2;
-      if (key === "4") this.selectedShip = 3;
-      if (key === "q") this.selectedMap = (this.selectedMap + MAP_OPTIONS.length - 1) % MAP_OPTIONS.length;
-      if (key === "e") this.selectedMap = (this.selectedMap + 1) % MAP_OPTIONS.length;
-      if (key === "z") this.selectedMode = (this.selectedMode + MODE_OPTIONS.length - 1) % MODE_OPTIONS.length;
-      if (key === "c") this.selectedMode = (this.selectedMode + 1) % MODE_OPTIONS.length;
+      // Hub: navigation only
       if (key === "enter") {
-        this.screen = "mod-select";
+        this.screen = "game-config";
       }
       if (key === "m") {
         this.onlineFlow = true;
-        this.screen = "mod-select";
+        this.screen = "game-config";
       }
       if (key === "f") {
         if (this.api.isAccount) {
@@ -380,6 +379,27 @@ export class Game {
       }
       if (key === " ") {
         this.startQuickPlay();
+      }
+    } else if (this.screen === "game-config") {
+      // Game config: ship/map/mode selection
+      if (key === "1") this.selectedShip = 0;
+      if (key === "2") this.selectedShip = 1;
+      if (key === "3") this.selectedShip = 2;
+      if (key === "4") this.selectedShip = 3;
+      if (key === "q") this.selectedMap = (this.selectedMap + MAP_OPTIONS.length - 1) % MAP_OPTIONS.length;
+      if (key === "e") this.selectedMap = (this.selectedMap + 1) % MAP_OPTIONS.length;
+      if (key === "z") this.selectedMode = (this.selectedMode + MODE_OPTIONS.length - 1) % MODE_OPTIONS.length;
+      if (key === "c") this.selectedMode = (this.selectedMode + 1) % MODE_OPTIONS.length;
+      if (key === "enter") {
+        this.screen = "mod-select";
+      }
+      if (key === "m") {
+        this.onlineFlow = true;
+        this.screen = "mod-select";
+      }
+      if (key === "escape") {
+        this.onlineFlow = false;
+        this.screen = "menu";
       }
     } else if (this.screen === "mod-select") {
       if (key === "1" || key === "2" || key === "3" || key === "4") {
@@ -406,7 +426,7 @@ export class Game {
       }
       if (key === "escape") {
         this.onlineFlow = false;
-        this.screen = "menu";
+        this.screen = "game-config";
       }
     } else if (this.screen === "settings") {
       if (key === "enter") {
@@ -633,7 +653,7 @@ export class Game {
     }
 
     if (this.screen === "menu") {
-      // Check overlay click regions (language toggle)
+      // Hub: check overlay + main buttons
       const localHit = this.hitTestLocal(mx, my);
       if (localHit === "btn-lang-toggle") {
         setLang(getLang() === "de" ? "en" : "de");
@@ -642,14 +662,12 @@ export class Game {
       }
       const hit = this.renderer.hitTest(mx, my);
       if (!hit) return;
-      if (hit.startsWith("ship-")) this.selectedShip = parseInt(hit.split("-")[1]);
-      if (hit.startsWith("map-")) this.selectedMap = parseInt(hit.split("-")[1]);
-      if (hit.startsWith("mode-")) this.selectedMode = parseInt(hit.split("-")[1]);
-      if (hit === "button-weiter") this.screen = "mod-select";
+      if (hit === "button-singleplayer") this.screen = "game-config";
       if (hit === "button-online") {
         this.onlineFlow = true;
-        this.screen = "mod-select";
+        this.screen = "game-config";
       }
+      if (hit === "button-quickplay") this.startQuickPlay();
       if (hit === "button-account") {
         if (this.api.isAccount) {
           this.screen = "profile";
@@ -660,7 +678,6 @@ export class Game {
           this.screen = "login";
         }
       }
-      if (hit === "button-quickplay") this.startQuickPlay();
       if (hit === "button-friends") {
         if (this.api.isAccount) {
           this.loadFriends();
@@ -668,6 +685,23 @@ export class Game {
         } else {
           this.textInputError = "Freunde nur mit Konto verfuegbar";
         }
+      }
+    } else if (this.screen === "game-config") {
+      // Game config: ship/map/mode selection
+      const localHit = this.hitTestLocal(mx, my);
+      if (localHit === "btn-lang-toggle") {
+        setLang(getLang() === "de" ? "en" : "de");
+        return;
+      }
+      const hit = this.renderer.hitTest(mx, my);
+      if (!hit) return;
+      if (hit.startsWith("ship-")) this.selectedShip = parseInt(hit.split("-")[1]);
+      if (hit.startsWith("map-")) this.selectedMap = parseInt(hit.split("-")[1]);
+      if (hit.startsWith("mode-")) this.selectedMode = parseInt(hit.split("-")[1]);
+      if (hit === "button-weiter") this.screen = "mod-select";
+      if (hit === "button-back") {
+        this.onlineFlow = false;
+        this.screen = "menu";
       }
     } else if (this.screen === "mod-select") {
       const hit = this.hitTestLocal(mx, my);
@@ -687,7 +721,7 @@ export class Game {
       }
       if (hit === "button-back") {
         this.onlineFlow = false;
-        this.screen = "menu";
+        this.screen = "game-config";
       }
     } else if (this.screen === "settings") {
       const hit = this.hitTestLocal(mx, my);

@@ -1014,7 +1014,9 @@ export class Renderer {
     ctx.fillText(t("gameover.returnToMenu"), w / 2, h / 2 + 40 + players.length * 24 + 30);
   }
 
-  drawMenu(selectedShip: number, selectedMap: number, selectedMode: number, hoveredId: string | null): void {
+  // ===== Hub Menu (Landing Page) =====
+
+  drawHub(hoveredId: string | null): void {
     const ctx = this.ctx;
     const w = this.canvas.width = window.innerWidth;
     const h = this.canvas.height = window.innerHeight;
@@ -1038,28 +1040,77 @@ export class Renderer {
     ctx.shadowColor = COLORS.gravityWell;
     ctx.shadowBlur = 30;
     ctx.fillStyle = COLORS.ui;
-    ctx.fillText("ORBITAL CLASH", w / 2, 100);
+    ctx.fillText("ORBITAL CLASH", w / 2, h / 2 - 140);
     ctx.shadowBlur = 0;
 
     ctx.font = "14px monospace";
     ctx.fillStyle = COLORS.gravityWell;
-    ctx.fillText(t("menu.subtitle"), w / 2, 125);
+    ctx.fillText(t("menu.subtitle"), w / 2, h / 2 - 110);
+
+    // Main buttons (centered vertically)
+    const btnY = h / 2 - 30;
+    this.drawButton(ctx, w / 2, btnY, 260, 48, t("menu.singleplayer"), COLORS.ui, "button-singleplayer", hoveredId);
+    this.drawButton(ctx, w / 2, btnY + 65, 260, 48, t("menu.multiplayer"), COLORS.uiDim, "button-online", hoveredId);
+    this.drawButton(ctx, w / 2, btnY + 130, 260, 48, t("menu.quickPlay"), COLORS.uiDim, "button-quickplay", hoveredId);
+
+    // Secondary buttons
+    const accountLabel = this.accountButtonLabel;
+    if (accountLabel) {
+      this.drawButton(ctx, w / 2 - 90, btnY + 200, 160, 36, accountLabel, "#ffaa00", "button-account", hoveredId);
+    }
+    this.drawButton(ctx, w / 2 + 90, btnY + 200, 160, 36, t("menu.friends"), COLORS.uiDim, "button-friends", hoveredId);
+
+    // Controls hint
+    ctx.font = "12px monospace";
+    ctx.fillStyle = COLORS.uiDim;
+    ctx.textAlign = "center";
+    ctx.fillText(t("menu.controls1"), w / 2, h - 50);
+    ctx.fillText(t("menu.controls2"), w / 2, h - 32);
+  }
+
+  // ===== Game Config (Ship/Map/Mode Selection) =====
+
+  drawGameConfig(
+    selectedShip: number, selectedMap: number, selectedMode: number,
+    hoveredId: string | null, _mouseX: number, _mouseY: number, onlineFlow: boolean,
+  ): void {
+    const ctx = this.ctx;
+    const w = this.canvas.width = window.innerWidth;
+    const h = this.canvas.height = window.innerHeight;
+    this.clickRegions = [];
+
+    ctx.fillStyle = COLORS.background;
+    ctx.fillRect(0, 0, w, h);
+
+    // Stars
+    for (const star of this.starField) {
+      const alpha = 0.2 + Math.sin(this.time + star.x) * 0.15;
+      ctx.globalAlpha = alpha;
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(star.x % w, star.y % h, 1.5, 1.5);
+    }
+    ctx.globalAlpha = 1;
 
     // Ship selection
     const ships: Array<keyof typeof SHIP_CONFIGS> = ["viper", "titan", "specter", "nova"];
     ctx.font = "bold 18px monospace";
+    ctx.textAlign = "center";
     ctx.fillStyle = COLORS.ui;
-    ctx.fillText(t("menu.selectShip"), w / 2, 180);
+    ctx.fillText(t("menu.selectShip"), w / 2, 40);
+
+    const shipBoxes: Array<{ bx: number; by: number; bw: number; bh: number; idx: number }> = [];
 
     for (let i = 0; i < ships.length; i++) {
       const ship = ships[i];
       const config = SHIP_CONFIGS[ship];
-      const bx = w / 2 - 250 + i * 165 - 50;
-      const by = 220 - 10;
-      const bw = 130;
+      const bx = w / 2 - 290 + i * 150;
+      const by = 60;
+      const bw = 135;
       const bh = 100;
       const isSelected = i === selectedShip;
       const isHovered = hoveredId === `ship-${i}`;
+
+      shipBoxes.push({ bx, by, bw, bh, idx: i });
 
       ctx.strokeStyle = isSelected ? config.color : (isHovered ? COLORS.ui : COLORS.uiDim);
       ctx.lineWidth = isSelected ? 2 : 1;
@@ -1073,18 +1124,44 @@ export class Renderer {
         ctx.fillRect(bx, by, bw, bh);
       }
 
+      // Ship name
       ctx.font = "bold 14px monospace";
+      ctx.textAlign = "center";
       ctx.fillStyle = isSelected ? config.color : (isHovered ? COLORS.ui : COLORS.uiDim);
       ctx.fillText(config.name, bx + bw / 2, by + 20);
 
+      // Stats with icons
+      const iconColor = isSelected ? config.color : COLORS.uiDim;
+      const statX = bx + 14;
       ctx.font = "11px monospace";
+      ctx.textAlign = "left";
       ctx.fillStyle = COLORS.uiDim;
-      ctx.fillText(t("menu.ship.hp", { n: config.maxHp }), bx + bw / 2, by + 40);
-      ctx.fillText(t("menu.ship.spd", { n: config.speed }), bx + bw / 2, by + 54);
-      ctx.fillText(t("menu.ship.wpn", { name: t(`weapon.${config.weaponType}` as any) }), bx + bw / 2, by + 68);
-      ctx.fillText(t("menu.ship.spc", { name: t(`special.${config.specialType}` as any) }), bx + bw / 2, by + 82);
 
+      // HP (heart icon)
+      this.drawIconHeart(ctx, statX, by + 33, 8, iconColor);
+      ctx.fillText(String(config.maxHp), statX + 14, by + 40);
+
+      // Speed (bolt icon)
+      this.drawIconBolt(ctx, statX, by + 47, 8, iconColor);
+      ctx.fillText(String(config.speed), statX + 14, by + 54);
+
+      // Weapon (crosshair icon)
+      this.drawIconCrosshair(ctx, statX, by + 61, 8, iconColor);
+      ctx.fillText(t(`weapon.${config.weaponType}` as any), statX + 14, by + 68);
+
+      // Special (star icon)
+      this.drawIconStar(ctx, statX, by + 75, 8, iconColor);
+      ctx.fillText(t(`special.${config.specialType}` as any), statX + 14, by + 82);
+
+      ctx.textAlign = "center";
       this.clickRegions.push({ x: bx, y: by, width: bw, height: bh, id: `ship-${i}` });
+    }
+
+    // Ship tooltip (drawn on top of everything else, after all ship boxes)
+    for (const sb of shipBoxes) {
+      if (hoveredId === `ship-${sb.idx}`) {
+        this.drawShipTooltip(ctx, sb.idx, sb.bx, sb.by, sb.bw, sb.bh, w);
+      }
     }
 
     // Map selection (2 rows of 3)
@@ -1093,21 +1170,21 @@ export class Renderer {
       "black-hole", "wormhole-station", "debris-field",
     ];
     ctx.font = "bold 18px monospace";
+    ctx.textAlign = "center";
     ctx.fillStyle = COLORS.ui;
-    ctx.fillText(t("menu.selectMap"), w / 2, 340);
+    ctx.fillText(t("menu.selectMap"), w / 2, 190);
 
     for (let i = 0; i < mapIds.length; i++) {
       const map = MAPS[mapIds[i]];
       const col = i % 3;
       const row = Math.floor(i / 3);
       const bx = w / 2 - 250 + col * 170;
-      const by = 355 + row * 140;
+      const by = 205 + row * 140;
       const bw = 155;
       const bh = 110;
       const isSelected = i === selectedMap;
       const isHovered = hoveredId === `map-${i}`;
 
-      // Box outline and fill
       ctx.strokeStyle = isSelected ? COLORS.gravityWell : (isHovered ? COLORS.ui : COLORS.uiDim);
       ctx.lineWidth = isSelected ? 2 : 1;
       ctx.strokeRect(bx, by, bw, bh);
@@ -1125,29 +1202,23 @@ export class Renderer {
       ctx.fillStyle = isSelected ? COLORS.ui : (isHovered ? COLORS.ui : COLORS.uiDim);
       ctx.fillText(map.name, bx + bw / 2, by + 16);
 
-      // Minimap area
-      const mx = bx + 4;
-      const my = by + 23;
-      const mw = bw - 8;
-      const mh = bh - 27;
-
-      // Minimap background
+      // Minimap
+      const mmx = bx + 4;
+      const mmy = by + 23;
+      const mmw = bw - 8;
+      const mmh = bh - 27;
       ctx.fillStyle = "#0a0a1a";
-      ctx.fillRect(mx, my, mw, mh);
-
-      // Scale factor
-      const scaleX = mw / map.width;
-      const scaleY = mh / map.height;
+      ctx.fillRect(mmx, mmy, mmw, mmh);
+      const scaleX = mmw / map.width;
+      const scaleY = mmh / map.height;
       const s = Math.min(scaleX, scaleY);
-      const ox = mx + (mw - map.width * s) / 2;
-      const oy = my + (mh - map.height * s) / 2;
+      const ox = mmx + (mmw - map.width * s) / 2;
+      const oy = mmy + (mmh - map.height * s) / 2;
 
-      // Arena boundary
       ctx.strokeStyle = "#333355";
       ctx.lineWidth = 0.5;
       ctx.strokeRect(ox, oy, map.width * s, map.height * s);
 
-      // Gravity wells
       for (const gw of map.gravityWells) {
         const gx = ox + gw.position.x * s;
         const gy = oy + gw.position.y * s;
@@ -1161,7 +1232,6 @@ export class Renderer {
         ctx.fill();
       }
 
-      // Asteroids
       for (const ast of map.asteroids) {
         const ax = ox + ast.position.x * s;
         const ay = oy + ast.position.y * s;
@@ -1172,7 +1242,6 @@ export class Renderer {
         ctx.fill();
       }
 
-      // Portals
       if (map.portals) {
         for (const portal of map.portals) {
           const px = ox + portal.position.x * s;
@@ -1198,13 +1267,13 @@ export class Renderer {
     ];
     ctx.font = "bold 18px monospace";
     ctx.fillStyle = COLORS.ui;
-    ctx.fillText(t("menu.selectMode"), w / 2, 645);
+    ctx.fillText(t("menu.selectMode"), w / 2, 510);
 
     for (let i = 0; i < modeNames.length; i++) {
       const col = i % 4;
       const row = Math.floor(i / 4);
       const bx = w / 2 - 310 + col * 155;
-      const by = 663 + row * 80;
+      const by = 528 + row * 80;
       const bw = 140;
       const bh = 58;
       const isSelected = i === selectedMode;
@@ -1233,29 +1302,147 @@ export class Renderer {
       this.clickRegions.push({ x: bx, y: by, width: bw, height: bh, id: `mode-${i}` });
     }
 
-    // Row 1: Weiter + Multiplayer + Quick Play
-    this.drawButton(ctx, w / 2 - 160, 840, 150, 40, t("menu.continue"), COLORS.ui, "button-weiter", hoveredId);
-    this.drawButton(ctx, w / 2, 840, 150, 40, t("menu.multiplayer"), COLORS.uiDim, "button-online", hoveredId);
-    this.drawButton(ctx, w / 2 + 160, 840, 150, 40, t("menu.quickPlay"), COLORS.uiDim, "button-quickplay", hoveredId);
-
-    // Row 2: Profil/Anmelden + Freunde
-    const accountLabel = this.accountButtonLabel;
-    if (accountLabel) {
-      this.drawButton(ctx, w / 2 - 90, 890, 160, 32, accountLabel, "#ffaa00", "button-account", hoveredId);
+    // Bottom buttons
+    const btnY = h - 60;
+    if (onlineFlow) {
+      this.drawButton(ctx, w / 2 - 100, btnY, 180, 40, t("menu.multiplayer"), COLORS.ui, "button-weiter", hoveredId);
+    } else {
+      this.drawButton(ctx, w / 2 - 100, btnY, 180, 40, t("menu.continue"), COLORS.ui, "button-weiter", hoveredId);
     }
-    this.drawButton(ctx, w / 2 + 90, 890, 140, 32, t("menu.friends"), COLORS.uiDim, "button-friends", hoveredId);
+    this.drawButton(ctx, w / 2 + 100, btnY, 180, 40, t("menu.back"), COLORS.uiDim, "button-back", hoveredId);
+  }
 
-    // Controls
-    ctx.font = "12px monospace";
+  // ===== Ship Stat Icons =====
+
+  private drawIconHeart(ctx: CanvasRenderingContext2D, x: number, y: number, size: number, color: string): void {
+    const s = size / 8;
+    ctx.save();
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.moveTo(x + 4 * s, y + 7 * s);
+    ctx.bezierCurveTo(x + 4 * s, y + 5 * s, x, y + 1 * s, x, y + 4 * s);
+    ctx.bezierCurveTo(x, y + 6 * s, x + 4 * s, y + 8 * s, x + 4 * s, y + 8 * s);
+    ctx.bezierCurveTo(x + 4 * s, y + 8 * s, x + 8 * s, y + 6 * s, x + 8 * s, y + 4 * s);
+    ctx.bezierCurveTo(x + 8 * s, y + 1 * s, x + 4 * s, y + 5 * s, x + 4 * s, y + 7 * s);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  private drawIconBolt(ctx: CanvasRenderingContext2D, x: number, y: number, size: number, color: string): void {
+    const s = size / 8;
+    ctx.save();
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(x + 5 * s, y);
+    ctx.lineTo(x + 2 * s, y + 4 * s);
+    ctx.lineTo(x + 5 * s, y + 4 * s);
+    ctx.lineTo(x + 3 * s, y + 8 * s);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  private drawIconCrosshair(ctx: CanvasRenderingContext2D, x: number, y: number, size: number, color: string): void {
+    const s = size / 8;
+    const cx = x + 4 * s;
+    const cy = y + 4 * s;
+    ctx.save();
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.arc(cx, cy, 3 * s, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(cx, y);
+    ctx.lineTo(cx, y + 8 * s);
+    ctx.moveTo(x, cy);
+    ctx.lineTo(x + 8 * s, cy);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  private drawIconStar(ctx: CanvasRenderingContext2D, x: number, y: number, size: number, color: string): void {
+    const cx = x + size / 2;
+    const cy = y + size / 2;
+    const outer = size / 2;
+    const inner = size / 5;
+    ctx.save();
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    for (let i = 0; i < 5; i++) {
+      const outerAngle = (i * 2 * Math.PI / 5) - Math.PI / 2;
+      const innerAngle = outerAngle + Math.PI / 5;
+      if (i === 0) ctx.moveTo(cx + Math.cos(outerAngle) * outer, cy + Math.sin(outerAngle) * outer);
+      else ctx.lineTo(cx + Math.cos(outerAngle) * outer, cy + Math.sin(outerAngle) * outer);
+      ctx.lineTo(cx + Math.cos(innerAngle) * inner, cy + Math.sin(innerAngle) * inner);
+    }
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+  }
+
+  // ===== Ship Tooltip =====
+
+  private drawShipTooltip(
+    ctx: CanvasRenderingContext2D, shipIdx: number,
+    bx: number, by: number, bw: number, _bh: number, screenW: number,
+  ): void {
+    const ships: Array<keyof typeof SHIP_CONFIGS> = ["viper", "titan", "specter", "nova"];
+    const config = SHIP_CONFIGS[ships[shipIdx]];
+    const tw = 220;
+    const th = 140;
+
+    // Position: right of box, or left if near right edge
+    let tx = bx + bw + 8;
+    if (tx + tw > screenW - 10) tx = bx - tw - 8;
+    const ty = by;
+
+    // Background
+    ctx.fillStyle = "#0a0a2a";
+    ctx.fillRect(tx, ty, tw, th);
+    ctx.strokeStyle = config.color;
+    ctx.lineWidth = 1;
+    ctx.strokeRect(tx, ty, tw, th);
+
+    const px = tx + 10;
+    let py = ty + 18;
+
+    // Ship name
+    ctx.font = "bold 14px monospace";
+    ctx.textAlign = "left";
+    ctx.fillStyle = config.color;
+    ctx.fillText(config.name, px, py);
+    py += 20;
+
+    // HP
+    ctx.font = "11px monospace";
+    ctx.fillStyle = COLORS.ui;
+    ctx.fillText(`${t("ship.stat.hp" as any)}: ${config.maxHp}`, px, py);
+    py += 16;
+
+    // Speed
+    ctx.fillText(`${t("ship.stat.speed" as any)}: ${config.speed}`, px, py);
+    py += 16;
+
+    // Weapon + desc
+    ctx.fillStyle = COLORS.ui;
+    ctx.fillText(`${t("ship.stat.weapon" as any)}: ${t(`weapon.${config.weaponType}` as any)}`, px, py);
+    py += 14;
     ctx.fillStyle = COLORS.uiDim;
+    ctx.font = "10px monospace";
+    ctx.fillText(t(`weapon.${config.weaponType}.desc` as any), px, py);
+    py += 18;
+
+    // Special + desc
+    ctx.fillStyle = COLORS.ui;
+    ctx.font = "11px monospace";
+    ctx.fillText(`${t("ship.stat.special" as any)}: ${t(`special.${config.specialType}` as any)}`, px, py);
+    py += 14;
+    ctx.fillStyle = COLORS.uiDim;
+    ctx.font = "10px monospace";
+    ctx.fillText(t(`special.${config.specialType}.desc` as any), px, py);
+
     ctx.textAlign = "center";
-    const controls = [
-      t("menu.controls1"),
-      t("menu.controls2"),
-    ];
-    for (let i = 0; i < controls.length; i++) {
-      ctx.fillText(controls[i], w / 2, h - 50 + i * 18);
-    }
   }
 
   private drawButton(
