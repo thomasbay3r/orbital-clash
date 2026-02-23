@@ -1079,10 +1079,10 @@ export class Renderer {
 
       ctx.font = "11px monospace";
       ctx.fillStyle = COLORS.uiDim;
-      ctx.fillText(`HP: ${config.maxHp}`, bx + bw / 2, by + 40);
-      ctx.fillText(`SPD: ${config.speed}`, bx + bw / 2, by + 54);
-      ctx.fillText(`WPN: ${config.weaponType}`, bx + bw / 2, by + 68);
-      ctx.fillText(`SPC: ${config.specialType}`, bx + bw / 2, by + 82);
+      ctx.fillText(t("menu.ship.hp", { n: config.maxHp }), bx + bw / 2, by + 40);
+      ctx.fillText(t("menu.ship.spd", { n: config.speed }), bx + bw / 2, by + 54);
+      ctx.fillText(t("menu.ship.wpn", { name: t(`weapon.${config.weaponType}` as any) }), bx + bw / 2, by + 68);
+      ctx.fillText(t("menu.ship.spc", { name: t(`special.${config.specialType}` as any) }), bx + bw / 2, by + 82);
 
       this.clickRegions.push({ x: bx, y: by, width: bw, height: bh, id: `ship-${i}` });
     }
