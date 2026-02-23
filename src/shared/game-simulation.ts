@@ -10,6 +10,8 @@ import {
   GRAVITY_DAMAGE_RADIUS, GRAVITY_DAMAGE, MODE_DURATIONS,
   KOTH_WIN_SCORE, KOTH_ZONE_RADIUS, KOTH_CAPTURE_RATE,
   GRAVITY_SHIFT_INTERVAL,
+  TAG_DPS, POTATO_TIMER, CAPTURE_WIN_SCORE, CORE_DROP_COOLDOWN,
+  CORE_CARRIER_SPEED_MULT, WAVE_PAUSE_DURATION,
 } from "./constants";
 import {
   add, sub, scale, length, normalize, distance, vecFromAngle,
@@ -131,6 +133,14 @@ export function addPlayer(
     maxHp = Math.round(maxHp * 1.25);
     speed = Math.round(speed * 0.85);
   }
+  // Mutator: glass-cannon = 1 HP
+  if (state.mutators.includes("glass-cannon")) {
+    maxHp = 1;
+  }
+  // Mutator: speed-demon = 2x speed
+  if (state.mutators.includes("speed-demon")) {
+    speed = speed * 2;
+  }
 
   state.players[id] = {
     id,
@@ -235,6 +245,28 @@ export function simulateTick(
   // King of the asteroid logic
   if (state.gameMode === "king-of-the-asteroid" && state.kothZone) {
     updateKoth(state, dt);
+  }
+
+  // Portal teleportation
+  if (state.portals.length > 0) {
+    checkPortalTeleport(state);
+  }
+
+  // Map events
+  updateMapEvents(state, dt);
+
+  // Mode-specific logic
+  if (state.gameMode === "asteroid-tag") {
+    updateAsteroidTag(state, dt);
+  }
+  if (state.gameMode === "hot-potato") {
+    updateHotPotato(state, dt);
+  }
+  if (state.gameMode === "capture-the-core") {
+    updateCaptureTheCore(state, dt);
+  }
+  if (state.gameMode === "survival-wave") {
+    updateSurvivalWave(state, dt);
   }
 
   // Check win conditions
@@ -356,6 +388,13 @@ function updatePlayer(
     if (thrustDir) {
       let speed = config.speed;
       if (player.mods.ship === "drift-master") speed *= 1.1;
+      if (state.mutators.includes("speed-demon")) speed *= 2;
+      // Core carrier moves slower
+      if (state.gameMode === "capture-the-core") {
+        if (state.cores.red.carrierId === player.id || state.cores.blue.carrierId === player.id) {
+          speed *= CORE_CARRIER_SPEED_MULT;
+        }
+      }
 
       // Boost
       player.boostActive = false;
@@ -395,9 +434,13 @@ function updatePlayer(
       : weaponConfig.fireRate;
     player.shootCooldown = 1 / fireRate;
 
-    const damage = player.mods.weapon === "rapid-fire"
+    let damage = player.mods.weapon === "rapid-fire"
       ? weaponConfig.damage * 0.7
       : weaponConfig.damage;
+    // Mutator: glass-cannon = 5x damage
+    if (state.mutators.includes("glass-cannon")) {
+      damage *= 5;
+    }
 
     for (let i = 0; i < weaponConfig.projectileCount; i++) {
       let angle = player.rotation;
@@ -419,7 +462,7 @@ function updatePlayer(
         lifetime: weaponConfig.projectileLifetime / 1000,
         radius: weaponConfig.projectileRadius,
         piercing: player.mods.weapon === "piercing",
-        ricochet: player.mods.weapon === "ricochet",
+        ricochet: player.mods.weapon === "ricochet" || state.mutators.includes("ricochet-arena"),
         gravitySynced: player.mods.weapon === "gravity-sync",
         homing: weaponConfig.homing,
         homingStrength: weaponConfig.homingStrength,
@@ -694,12 +737,16 @@ function checkProjectileCollisions(state: GameState): void {
     let shouldRemove = false;
 
     for (const player of Object.values(state.players)) {
-      if (player.id === proj.ownerId) continue;
+      // friendly-fire mutator allows self-hit
+      if (!state.mutators.includes("friendly-fire") && player.id === proj.ownerId) continue;
       if (!player.alive || player.phaseActive || player.invulnerable) continue;
       if (proj.piercing && proj.hitEntities.includes(player.id)) continue;
 
       const shipConfig = SHIP_CONFIGS[player.shipClass];
-      if (circleCircle(proj.position, proj.radius, player.position, shipConfig.collisionRadius)) {
+      const collisionRadius = state.mutators.includes("big-head")
+        ? shipConfig.collisionRadius * 2
+        : shipConfig.collisionRadius;
+      if (circleCircle(proj.position, proj.radius, player.position, collisionRadius)) {
         // Shield check
         if (player.shieldActive && player.shieldHp > 0) {
           player.shieldHp -= proj.damage;
@@ -716,6 +763,15 @@ function checkProjectileCollisions(state: GameState): void {
             : proj.gravitySynced ? "gravity-well"
             : "normal";
           dealDamage(state, player, owner, proj.damage, projKillType);
+
+          // Asteroid Tag: hitting someone transfers "It" status
+          if (state.gameMode === "asteroid-tag" && owner && state.tagItPlayerId === owner.id) {
+            state.tagItPlayerId = player.id;
+          }
+          // Hot Potato: hitting someone transfers the bomb
+          if (state.gameMode === "hot-potato" && owner && state.potatoCarrierId === owner.id) {
+            state.potatoCarrierId = player.id;
+          }
 
           // Track shots hit
           if (owner && state.playerStats[owner.id]) {
@@ -935,6 +991,311 @@ function checkDuelWin(state: GameState): void {
       endGame(state);
       return;
     }
+  }
+}
+
+// ===== Portal Teleportation =====
+
+function checkPortalTeleport(state: GameState): void {
+  for (const player of Object.values(state.players)) {
+    if (!player.alive) continue;
+    for (const portal of state.portals) {
+      if (distance(player.position, portal.position) < portal.radius + 10) {
+        const linked = state.portals.find((p) => p.id === portal.linkedPortalId);
+        if (linked) {
+          // Teleport player to linked portal
+          const offset = normalize(player.velocity);
+          player.position = add(linked.position, scale(offset, linked.radius + 15));
+          break; // only one teleport per tick
+        }
+      }
+    }
+  }
+  // Teleport projectiles too
+  for (const proj of state.projectiles) {
+    for (const portal of state.portals) {
+      if (distance(proj.position, portal.position) < portal.radius) {
+        const linked = state.portals.find((p) => p.id === portal.linkedPortalId);
+        if (linked) {
+          const offset = normalize(proj.velocity);
+          proj.position = add(linked.position, scale(offset, linked.radius + 5));
+          break;
+        }
+      }
+    }
+  }
+}
+
+// ===== Map Events =====
+
+function updateMapEvents(state: GameState, dt: number): void {
+  // Update active events
+  for (let i = state.mapEvents.length - 1; i >= 0; i--) {
+    const event = state.mapEvents[i];
+    event.timer -= dt;
+    if (event.timer <= 0) {
+      deactivateMapEvent(state, event);
+      state.mapEvents.splice(i, 1);
+    }
+  }
+
+  // Spawn new events
+  state.nextEventTimer -= dt;
+  if (state.nextEventTimer <= 0) {
+    spawnRandomMapEvent(state);
+    state.nextEventTimer = 30 + Math.random() * 30;
+  }
+}
+
+function spawnRandomMapEvent(state: GameState): void {
+  const eventTypes: Array<{ id: "asteroid-rain" | "gravity-surge" | "power-core" | "shield-bubble" | "emp-storm"; name: string; duration: number }> = [
+    { id: "asteroid-rain", name: "Asteroiden-Regen", duration: 10 },
+    { id: "gravity-surge", name: "Gravity Surge", duration: 15 },
+    { id: "power-core", name: "Power Core", duration: 20 },
+    { id: "shield-bubble", name: "Shield Bubble", duration: 15 },
+    { id: "emp-storm", name: "EMP Storm", duration: 10 },
+  ];
+  const chosen = eventTypes[Math.floor(Math.random() * eventTypes.length)];
+  state.mapEvents.push({
+    id: chosen.id,
+    name: chosen.name,
+    duration: chosen.duration,
+    timer: chosen.duration,
+    active: true,
+  });
+  activateMapEvent(state, chosen.id);
+}
+
+function activateMapEvent(state: GameState, eventId: string): void {
+  if (eventId === "gravity-surge") {
+    for (const gw of state.gravityWells) {
+      gw.strength *= 2;
+    }
+  }
+  if (eventId === "emp-storm") {
+    for (const player of Object.values(state.players)) {
+      player.specialCooldown = 5;
+    }
+  }
+}
+
+function deactivateMapEvent(state: GameState, event: { id: string }): void {
+  if (event.id === "gravity-surge") {
+    for (const gw of state.gravityWells) {
+      gw.strength /= 2;
+    }
+  }
+}
+
+// ===== Asteroid Tag =====
+
+function updateAsteroidTag(state: GameState, dt: number): void {
+  const players = Object.values(state.players).filter((p) => p.alive);
+  if (players.length < 2) return;
+
+  // Initialize "It" player
+  if (!state.tagItPlayerId || !state.players[state.tagItPlayerId]?.alive) {
+    const randomIdx = Math.floor(Math.random() * players.length);
+    state.tagItPlayerId = players[randomIdx].id;
+  }
+
+  // "It" takes damage over time
+  const itPlayer = state.players[state.tagItPlayerId];
+  if (itPlayer && itPlayer.alive) {
+    itPlayer.hp -= TAG_DPS * dt;
+    if (itPlayer.hp <= 0) {
+      killPlayer(state, itPlayer, undefined, "normal");
+      // Pick new "It" from remaining alive players
+      const remaining = Object.values(state.players).filter((p) => p.alive && p.id !== state.tagItPlayerId);
+      if (remaining.length > 0) {
+        state.tagItPlayerId = remaining[Math.floor(Math.random() * remaining.length)].id;
+      }
+    }
+  }
+
+  // Check if only 1 player left
+  const alive = Object.values(state.players).filter((p) => p.alive);
+  if (alive.length <= 1 && players.length >= 2) {
+    if (alive.length === 1) state.winnerId = alive[0].id;
+    endGame(state);
+  }
+}
+
+// ===== Hot Potato =====
+
+function updateHotPotato(state: GameState, dt: number): void {
+  const players = Object.values(state.players).filter((p) => p.alive);
+  if (players.length < 2) return;
+
+  // Initialize potato carrier
+  if (!state.potatoCarrierId || !state.players[state.potatoCarrierId]?.alive) {
+    const randomIdx = Math.floor(Math.random() * players.length);
+    state.potatoCarrierId = players[randomIdx].id;
+    state.potatoTimer = POTATO_TIMER;
+  }
+
+  // Countdown
+  state.potatoTimer -= dt;
+
+  // Check gravity wells accelerate timer
+  const carrier = state.players[state.potatoCarrierId];
+  if (carrier) {
+    for (const gw of state.gravityWells) {
+      const dist = distance(carrier.position, gw.position);
+      if (dist < gw.radius * 2) {
+        state.potatoTimer -= dt * 0.5; // 50% faster near wells
+      }
+    }
+  }
+
+  // Bomb explodes
+  if (state.potatoTimer <= 0) {
+    if (carrier && carrier.alive) {
+      killPlayer(state, carrier, undefined, "normal");
+      // Everyone else gets a point
+      for (const p of Object.values(state.players)) {
+        if (p.id !== state.potatoCarrierId && p.alive) {
+          p.score++;
+        }
+      }
+    }
+    // Reset for next round
+    const alive = Object.values(state.players).filter((p) => p.alive);
+    if (alive.length >= 2) {
+      state.potatoCarrierId = alive[Math.floor(Math.random() * alive.length)].id;
+      state.potatoTimer = POTATO_TIMER;
+    }
+  }
+}
+
+// ===== Capture the Core =====
+
+function updateCaptureTheCore(state: GameState, dt: number): void {
+  const map = MAPS[state.mapId];
+
+  for (const team of ["red", "blue"] as const) {
+    const core = state.cores[team];
+    const otherTeam = team === "red" ? "blue" : "red";
+
+    // Update drop cooldown
+    if (core.droppedTimer > 0) {
+      core.droppedTimer -= dt;
+    }
+
+    // Core is being carried
+    if (core.carrierId) {
+      const carrier = state.players[core.carrierId];
+      if (!carrier || !carrier.alive) {
+        // Carrier died — drop core
+        core.carrierId = null;
+        core.droppedTimer = CORE_DROP_COOLDOWN;
+        continue;
+      }
+      // Core follows carrier
+      core.position = { ...carrier.position };
+
+      // Capture: bring enemy core to YOUR base
+      const myBase = otherTeam === "red"
+        ? { x: 200, y: map.height / 2 }
+        : { x: map.width - 200, y: map.height / 2 };
+      if (distance(carrier.position, myBase) < 60) {
+        state.captureScores[otherTeam]++;
+        // Reset core to its base
+        core.position = team === "red"
+          ? { x: 200, y: map.height / 2 }
+          : { x: map.width - 200, y: map.height / 2 };
+        core.carrierId = null;
+        core.atBase = true;
+
+        // Check win
+        if (state.captureScores[otherTeam] >= CAPTURE_WIN_SCORE) {
+          // Find best player on winning team
+          let bestPlayer: string | null = null;
+          let bestScore = -1;
+          for (const [pid, pTeam] of Object.entries(state.teams)) {
+            if (pTeam === otherTeam && state.players[pid]) {
+              if (state.players[pid].score > bestScore) {
+                bestScore = state.players[pid].score;
+                bestPlayer = pid;
+              }
+            }
+          }
+          state.winnerId = bestPlayer;
+          state.winnerTeam = otherTeam;
+          endGame(state);
+          return;
+        }
+      }
+    } else if (core.atBase && core.droppedTimer <= 0) {
+      // Core at base — check if enemy player picks it up
+      for (const [pid, pTeam] of Object.entries(state.teams)) {
+        if (pTeam !== team && state.players[pid]?.alive) {
+          if (distance(state.players[pid].position, core.position) < 30) {
+            core.carrierId = pid;
+            core.atBase = false;
+            break;
+          }
+        }
+      }
+    }
+  }
+}
+
+// ===== Survival Wave =====
+
+function updateSurvivalWave(state: GameState, dt: number): void {
+  // Wave pause between rounds
+  if (state.wavePause) {
+    state.wavePauseTimer -= dt;
+    if (state.wavePauseTimer <= 0) {
+      state.wavePause = false;
+      startNewWave(state);
+    }
+    return;
+  }
+
+  // Check if wave is cleared
+  if (state.waveEnemiesRemaining <= 0 && state.waveNumber > 0) {
+    state.wavePause = true;
+    state.wavePauseTimer = WAVE_PAUSE_DURATION;
+    state.waveNumber++;
+    // Heal all players between waves
+    for (const player of Object.values(state.players)) {
+      if (player.alive) {
+        player.hp = player.maxHp;
+      }
+    }
+  }
+
+  // Check game over (no shared lives left and all dead)
+  if (state.sharedLives <= 0) {
+    const anyAlive = Object.values(state.players).some((p) => p.alive);
+    if (!anyAlive) {
+      // Score = wave number reached
+      let bestPlayer: string | null = null;
+      let bestScore = -1;
+      for (const p of Object.values(state.players)) {
+        if (p.score > bestScore) {
+          bestScore = p.score;
+          bestPlayer = p.id;
+        }
+      }
+      state.winnerId = bestPlayer;
+      endGame(state);
+    }
+  }
+}
+
+function startNewWave(state: GameState): void {
+  // Wave difficulty scales with wave number
+  const enemyCount = 2 + state.waveNumber;
+  state.waveEnemiesRemaining = enemyCount;
+
+  // Spawn drone bots (simplified: just add score tracking)
+  // In practice, the server would spawn bot entities
+  // For now, we decrement enemies when players get kills
+  for (const player of Object.values(state.players)) {
+    player.score = state.waveNumber; // track wave progress
   }
 }
 
