@@ -1,8 +1,11 @@
 import {
   GameState, PlayerState, Projectile, GravityWell,
-  Asteroid, Particle, Pickup, Vec2, KothZone,
+  Asteroid, Particle, Pickup, Vec2, KothZone, Portal,
 } from "../../shared/types";
-import { SHIP_CONFIGS, COLORS, KOTH_WIN_SCORE, SPECIAL_CONFIGS } from "../../shared/constants";
+import {
+  SHIP_CONFIGS, COLORS, KOTH_WIN_SCORE, SPECIAL_CONFIGS,
+  POTATO_TIMER, CAPTURE_WIN_SCORE,
+} from "../../shared/constants";
 import { sub, length, normalize, scale, add } from "../../shared/physics";
 import { MAPS } from "../../shared/maps";
 
@@ -82,17 +85,32 @@ export class Renderer {
     this.drawGravityWells(state.gravityWells);
     this.drawAsteroids(state.asteroids);
     this.drawPickups(state.pickups);
+    this.drawPortals(state.portals);
     this.drawKothZone(state.kothZone);
+    this.drawCores(state);
     this.drawProjectiles(state.projectiles);
     this.drawParticles(state.particles);
     this.drawPlayers(state, localPlayerId);
 
     this.ctx.restore();
 
+    // Fog-of-war overlay (mutator)
+    if (state.mutators.includes("fog-of-war") && localPlayer?.alive) {
+      this.drawFogOfWar(localPlayer);
+    }
+
     // HUD is drawn in screen space
     if (localPlayer) {
       this.drawHUD(state, localPlayer, roomCode, copiedFeedback);
     }
+
+    // Mode-specific HUD overlays
+    if (localPlayer) {
+      this.drawModeHUD(state, localPlayer);
+    }
+
+    // Map event announcements
+    this.drawMapEventOverlay(state);
 
     if (state.gameOver) {
       this.drawGameOver(state);
@@ -277,6 +295,95 @@ export class Renderer {
     this.ctx.setLineDash(zone.owner ? [] : [10, 5]);
     this.ctx.stroke();
     this.ctx.setLineDash([]);
+  }
+
+  private drawPortals(portals: Portal[]): void {
+    for (const portal of portals) {
+      const pulse = 1 + Math.sin(this.time * 4 + portal.position.x) * 0.15;
+      const r = portal.radius * pulse;
+
+      // Swirling gradient
+      const gradient = this.ctx.createRadialGradient(
+        portal.position.x, portal.position.y, 0,
+        portal.position.x, portal.position.y, r,
+      );
+      gradient.addColorStop(0, portal.color + "80");
+      gradient.addColorStop(0.5, portal.color + "30");
+      gradient.addColorStop(1, portal.color + "00");
+
+      this.ctx.beginPath();
+      this.ctx.arc(portal.position.x, portal.position.y, r, 0, Math.PI * 2);
+      this.ctx.fillStyle = gradient;
+      this.ctx.fill();
+
+      // Spinning ring
+      this.ctx.save();
+      this.ctx.translate(portal.position.x, portal.position.y);
+      this.ctx.rotate(this.time * 3);
+      this.ctx.strokeStyle = portal.color;
+      this.ctx.lineWidth = 2;
+      this.ctx.setLineDash([8, 8]);
+      this.ctx.beginPath();
+      this.ctx.arc(0, 0, portal.radius * 0.7, 0, Math.PI * 2);
+      this.ctx.stroke();
+      this.ctx.setLineDash([]);
+      this.ctx.restore();
+
+      // Inner core
+      this.ctx.shadowColor = portal.color;
+      this.ctx.shadowBlur = 15;
+      this.ctx.beginPath();
+      this.ctx.arc(portal.position.x, portal.position.y, 6, 0, Math.PI * 2);
+      this.ctx.fillStyle = portal.color;
+      this.ctx.fill();
+      this.ctx.shadowBlur = 0;
+    }
+  }
+
+  private drawCores(state: GameState): void {
+    if (state.gameMode !== "capture-the-core") return;
+
+    const cores = state.cores;
+    if (!cores) return;
+
+    const drawCore = (core: { position: Vec2; carrierId: string | null; atBase: boolean }, color: string) => {
+      if (core.carrierId) return; // Core is carried, drawn with player
+      const pulse = 1 + Math.sin(this.time * 5) * 0.2;
+      const r = 10 * pulse;
+
+      this.ctx.shadowColor = color;
+      this.ctx.shadowBlur = 15;
+      this.ctx.beginPath();
+      this.ctx.arc(core.position.x, core.position.y, r, 0, Math.PI * 2);
+      this.ctx.fillStyle = color + "cc";
+      this.ctx.fill();
+      this.ctx.shadowBlur = 0;
+
+      // Diamond shape inside
+      this.ctx.strokeStyle = "#ffffff";
+      this.ctx.lineWidth = 2;
+      this.ctx.beginPath();
+      this.ctx.moveTo(core.position.x, core.position.y - 6);
+      this.ctx.lineTo(core.position.x + 4, core.position.y);
+      this.ctx.lineTo(core.position.x, core.position.y + 6);
+      this.ctx.lineTo(core.position.x - 4, core.position.y);
+      this.ctx.closePath();
+      this.ctx.stroke();
+
+      // Base indicator ring
+      if (core.atBase) {
+        this.ctx.strokeStyle = color + "60";
+        this.ctx.lineWidth = 1;
+        this.ctx.setLineDash([4, 4]);
+        this.ctx.beginPath();
+        this.ctx.arc(core.position.x, core.position.y, 25, 0, Math.PI * 2);
+        this.ctx.stroke();
+        this.ctx.setLineDash([]);
+      }
+    };
+
+    drawCore(cores.red, "#ff4444");
+    drawCore(cores.blue, "#4488ff");
   }
 
   private drawProjectiles(projectiles: Projectile[]): void {
@@ -520,6 +627,182 @@ export class Renderer {
     }
   }
 
+  private drawFogOfWar(player: PlayerState): void {
+    const ctx = this.ctx;
+    const w = this.canvas.width;
+    const h = this.canvas.height;
+    const fogRadius = 300;
+
+    // Convert player world position to screen position
+    const screenX = w / 2 + (player.position.x - this.camera.x) * this.camera.zoom;
+    const screenY = h / 2 + (player.position.y - this.camera.y) * this.camera.zoom;
+    const screenRadius = fogRadius * this.camera.zoom;
+
+    ctx.save();
+    ctx.fillStyle = "rgba(0, 0, 0, 0.85)";
+
+    // Draw dark overlay with circular cutout
+    ctx.beginPath();
+    ctx.rect(0, 0, w, h);
+    ctx.arc(screenX, screenY, screenRadius, 0, Math.PI * 2, true);
+    ctx.fill();
+
+    // Soft edge gradient
+    const edgeGrad = ctx.createRadialGradient(
+      screenX, screenY, screenRadius * 0.85,
+      screenX, screenY, screenRadius,
+    );
+    edgeGrad.addColorStop(0, "rgba(0,0,0,0)");
+    edgeGrad.addColorStop(1, "rgba(0,0,0,0.5)");
+    ctx.beginPath();
+    ctx.arc(screenX, screenY, screenRadius, 0, Math.PI * 2);
+    ctx.fillStyle = edgeGrad;
+    ctx.fill();
+
+    ctx.restore();
+  }
+
+  private drawModeHUD(state: GameState, player: PlayerState): void {
+    const ctx = this.ctx;
+    const w = this.canvas.width;
+
+    // Asteroid Tag: "It" indicator
+    if (state.gameMode === "asteroid-tag" && state.tagItPlayerId) {
+      const isIt = state.tagItPlayerId === player.id;
+      ctx.font = "bold 18px monospace";
+      ctx.textAlign = "center";
+      if (isIt) {
+        const pulse = 0.7 + Math.sin(this.time * 8) * 0.3;
+        ctx.globalAlpha = pulse;
+        ctx.fillStyle = "#ff4444";
+        ctx.fillText("DU BIST ES! (Treffe jemanden!)", w / 2, 70);
+        ctx.globalAlpha = 1;
+      } else {
+        const itPlayer = state.players[state.tagItPlayerId];
+        if (itPlayer) {
+          ctx.fillStyle = "#ffaa00";
+          ctx.fillText(`${itPlayer.name} ist ES!`, w / 2, 70);
+        }
+      }
+    }
+
+    // Hot Potato: Bomb timer
+    if (state.gameMode === "hot-potato" && state.potatoCarrierId) {
+      const hasIt = state.potatoCarrierId === player.id;
+      const remaining = Math.max(0, state.potatoTimer);
+      const pct = remaining / POTATO_TIMER;
+
+      ctx.font = "bold 20px monospace";
+      ctx.textAlign = "center";
+      if (hasIt) {
+        const urgency = pct < 0.3 ? "#ff0000" : pct < 0.6 ? "#ff6600" : "#ffaa00";
+        const pulse = pct < 0.3 ? (0.5 + Math.sin(this.time * 15) * 0.5) : 1;
+        ctx.globalAlpha = pulse;
+        ctx.fillStyle = urgency;
+        ctx.fillText(`BOMBE! ${remaining.toFixed(1)}s`, w / 2, 70);
+        ctx.globalAlpha = 1;
+      } else {
+        const carrier = state.players[state.potatoCarrierId];
+        if (carrier) {
+          ctx.fillStyle = "#ffaa00";
+          ctx.fillText(`${carrier.name} hat die Bombe (${remaining.toFixed(1)}s)`, w / 2, 70);
+        }
+      }
+    }
+
+    // Capture the Core: Team scores
+    if (state.gameMode === "capture-the-core" && state.captureScores) {
+      ctx.font = "bold 20px monospace";
+      ctx.textAlign = "center";
+      const myTeam = state.teams[player.id];
+
+      // Red score
+      ctx.fillStyle = myTeam === "red" ? "#ff6666" : "#ff4444";
+      ctx.fillText(`ROT: ${state.captureScores.red}`, w / 2 - 100, 70);
+
+      // vs
+      ctx.fillStyle = COLORS.uiDim;
+      ctx.font = "14px monospace";
+      ctx.fillText(`/ ${CAPTURE_WIN_SCORE}`, w / 2, 70);
+
+      // Blue score
+      ctx.font = "bold 20px monospace";
+      ctx.fillStyle = myTeam === "blue" ? "#6688ff" : "#4488ff";
+      ctx.fillText(`BLAU: ${state.captureScores.blue}`, w / 2 + 100, 70);
+
+      // Team indicator
+      if (myTeam) {
+        ctx.font = "12px monospace";
+        ctx.fillStyle = myTeam === "red" ? "#ff4444" : "#4488ff";
+        ctx.fillText(`Dein Team: ${myTeam === "red" ? "ROT" : "BLAU"}`, w / 2, 90);
+      }
+    }
+
+    // Survival Wave: Wave info
+    if (state.gameMode === "survival-wave") {
+      ctx.font = "bold 18px monospace";
+      ctx.textAlign = "center";
+
+      if (state.wavePause) {
+        ctx.fillStyle = "#44ff88";
+        ctx.fillText(`Welle ${state.waveNumber + 1} startet in ${Math.ceil(state.wavePauseTimer)}s...`, w / 2, 70);
+      } else {
+        ctx.fillStyle = "#ffaa00";
+        ctx.fillText(`Welle ${state.waveNumber}  |  Gegner: ${state.waveEnemiesRemaining}`, w / 2, 70);
+      }
+
+      // Shared lives
+      ctx.font = "14px monospace";
+      ctx.fillStyle = state.sharedLives <= 3 ? "#ff4444" : "#44ff88";
+      ctx.fillText(`Leben: ${state.sharedLives}`, w / 2, 92);
+    }
+
+    // Gravity Shift: active indicator
+    if (state.gameMode === "gravity-shift") {
+      const shifting = state.gravityWells.some((w) => w.isTemporary);
+      if (shifting) {
+        ctx.font = "bold 14px monospace";
+        ctx.textAlign = "center";
+        ctx.fillStyle = COLORS.gravityWell;
+        ctx.fillText("GRAVITY SHIFT AKTIV!", w / 2, 70);
+      }
+    }
+
+    // Active mutator display (top-left below scoreboard)
+    if (state.mutators.length > 0) {
+      const scoreboardEnd = Object.keys(state.players).length * 18 + 30;
+      ctx.font = "10px monospace";
+      ctx.textAlign = "left";
+      ctx.fillStyle = "#888888";
+      ctx.fillText("Mutatoren:", 20, scoreboardEnd);
+      for (let i = 0; i < state.mutators.length; i++) {
+        ctx.fillStyle = "#aa88ff";
+        ctx.fillText(state.mutators[i], 20, scoreboardEnd + 14 + i * 13);
+      }
+    }
+  }
+
+  private drawMapEventOverlay(state: GameState): void {
+    const active = state.mapEvents.filter((e) => e.active);
+    if (active.length === 0) return;
+
+    const ctx = this.ctx;
+    const w = this.canvas.width;
+
+    for (let i = 0; i < active.length; i++) {
+      const event = active[i];
+      const y = 115 + i * 22;
+
+      ctx.font = "bold 14px monospace";
+      ctx.textAlign = "center";
+      const alpha = Math.min(1, event.timer); // Fade out in last second
+      ctx.globalAlpha = alpha;
+      ctx.fillStyle = "#ff88ff";
+      ctx.fillText(`${event.name} (${Math.ceil(event.timer)}s)`, w / 2, y);
+      ctx.globalAlpha = 1;
+    }
+  }
+
   // ===== HUD (Screen Space) =====
 
   drawHUD(state: GameState, player: PlayerState, roomCode?: string, copiedFeedback = 0): void {
@@ -547,6 +830,10 @@ export class Renderer {
     if (state.gameMode === "king-of-the-asteroid") {
       const score = Math.floor(state.kothScores[player.id] || 0);
       ctx.fillText(`${score} / ${KOTH_WIN_SCORE}`, w / 2, 40);
+    } else if (state.gameMode === "capture-the-core") {
+      // Score shown in mode HUD instead
+    } else if (state.gameMode === "survival-wave") {
+      ctx.fillText(`Welle ${state.waveNumber}`, w / 2, 40);
     } else {
       ctx.fillText(`${player.score} KILLS`, w / 2, 40);
     }
@@ -681,7 +968,11 @@ export class Renderer {
     ctx.fillStyle = COLORS.ui;
     ctx.fillText("GAME OVER", w / 2, h / 2 - 60);
 
-    if (state.winnerId && state.players[state.winnerId]) {
+    if (state.winnerTeam) {
+      ctx.font = "bold 28px monospace";
+      ctx.fillStyle = state.winnerTeam === "red" ? "#ff4444" : "#4488ff";
+      ctx.fillText(`Team ${state.winnerTeam === "red" ? "ROT" : "BLAU"} gewinnt!`, w / 2, h / 2 - 10);
+    } else if (state.winnerId && state.players[state.winnerId]) {
       const winner = state.players[state.winnerId];
       const config = SHIP_CONFIGS[winner.shipClass];
       ctx.font = "bold 28px monospace";
@@ -781,17 +1072,19 @@ export class Renderer {
       this.clickRegions.push({ x: bx, y: by, width: bw, height: bh, id: `ship-${i}` });
     }
 
-    // Map selection
-    const mapNames = ["Nebula Station", "Asteroid Belt", "The Singularity"];
+    // Map selection (2 rows of 3)
+    const mapNames = ["Nebula Station", "Asteroid Belt", "The Singularity", "Black Hole", "Wormhole Station", "Debris Field"];
     ctx.font = "bold 18px monospace";
     ctx.fillStyle = COLORS.ui;
-    ctx.fillText("SELECT MAP", w / 2, 360);
+    ctx.fillText("SELECT MAP", w / 2, 350);
 
     for (let i = 0; i < mapNames.length; i++) {
-      const bx = w / 2 - 200 + i * 180 - 60;
-      const by = 390 - 10;
-      const bw = 160;
-      const bh = 40;
+      const col = i % 3;
+      const row = Math.floor(i / 3);
+      const bx = w / 2 - 250 + col * 170;
+      const by = 365 + row * 45;
+      const bw = 155;
+      const bh = 36;
       const isSelected = i === selectedMap;
       const isHovered = hoveredId === `map-${i}`;
 
@@ -807,24 +1100,27 @@ export class Renderer {
         ctx.fillRect(bx, by, bw, bh);
       }
 
-      ctx.font = "12px monospace";
+      ctx.font = "11px monospace";
       ctx.fillStyle = isSelected ? COLORS.ui : (isHovered ? COLORS.ui : COLORS.uiDim);
-      ctx.fillText(mapNames[i], bx + bw / 2, by + 25);
+      ctx.fillText(mapNames[i], bx + bw / 2, by + 22);
 
       this.clickRegions.push({ x: bx, y: by, width: bw, height: bh, id: `map-${i}` });
     }
 
-    // Mode selection
-    const modeNames = ["Deathmatch", "King of Asteroid", "Gravity Shift", "Duel"];
+    // Mode selection (2 rows of 4)
+    const modeNames = ["Deathmatch", "King of Asteroid", "Gravity Shift", "Duel",
+      "Asteroid Tag", "Survival Wave", "Hot Potato", "Capture Core"];
     ctx.font = "bold 18px monospace";
     ctx.fillStyle = COLORS.ui;
     ctx.fillText("SELECT MODE", w / 2, 470);
 
     for (let i = 0; i < modeNames.length; i++) {
-      const bx = w / 2 - 290 + i * 160 - 50;
-      const by = 500 - 10;
+      const col = i % 4;
+      const row = Math.floor(i / 4);
+      const bx = w / 2 - 310 + col * 155;
+      const by = 485 + row * 45;
       const bw = 140;
-      const bh = 40;
+      const bh = 36;
       const isSelected = i === selectedMode;
       const isHovered = hoveredId === `mode-${i}`;
 
@@ -840,18 +1136,18 @@ export class Renderer {
         ctx.fillRect(bx, by, bw, bh);
       }
 
-      ctx.font = "12px monospace";
+      ctx.font = "11px monospace";
       ctx.fillStyle = isSelected ? COLORS.ui : (isHovered ? COLORS.ui : COLORS.uiDim);
-      ctx.fillText(modeNames[i], bx + bw / 2, by + 25);
+      ctx.fillText(modeNames[i], bx + bw / 2, by + 22);
 
       this.clickRegions.push({ x: bx, y: by, width: bw, height: bh, id: `mode-${i}` });
     }
 
     // "Weiter" button
-    this.drawButton(ctx, w / 2, 580, 200, 44, "Weiter", COLORS.ui, "button-weiter", hoveredId);
+    this.drawButton(ctx, w / 2, 600, 200, 44, "Weiter", COLORS.ui, "button-weiter", hoveredId);
 
     // "Multiplayer" button
-    this.drawButton(ctx, w / 2, 638, 200, 36, "Multiplayer", COLORS.uiDim, "button-online", hoveredId);
+    this.drawButton(ctx, w / 2, 658, 200, 36, "Multiplayer", COLORS.uiDim, "button-online", hoveredId);
 
     // Controls
     ctx.font = "12px monospace";
