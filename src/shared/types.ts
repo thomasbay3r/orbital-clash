@@ -353,6 +353,61 @@ export interface ExplosionEffect {
   unlockLevel: number;
 }
 
+export interface TrailConfig {
+  id: string;
+  name: string;
+  color: string;
+  particleCount: number;
+  lifetime: number;
+  unlockLevel: number;
+}
+
+export interface EmoteConfig {
+  id: string;
+  text: string;
+  unlockLevel: number;
+}
+
+export interface BadgeConfig {
+  id: string;
+  name: string;
+  icon: string; // emoji or text symbol
+  unlockLevel: number;
+}
+
+// ===== Challenges & Achievements =====
+
+export type ChallengeType = "play-games" | "get-kills" | "win-games" | "gravity-kills"
+  | "mode-variety" | "use-special" | "no-death-win" | "damage-dealt";
+
+export interface ChallengeConfig {
+  id: string;
+  name: string;
+  description: string;
+  type: ChallengeType;
+  target: number;
+  xpReward: number;
+  difficulty: "easy" | "medium" | "hard";
+  period: "daily" | "weekly";
+}
+
+export interface ChallengeProgress {
+  challengeId: string;
+  progress: number;
+  target: number;
+  completed: boolean;
+}
+
+export interface AchievementConfig {
+  id: string;
+  name: string;
+  description: string;
+  condition: string; // Human-readable
+  reward: string; // Description of reward
+  rewardType: "title" | "skin" | "trail" | "badge" | "kill-effect" | "emote";
+  rewardId: string;
+}
+
 // ===== Account & Auth Types =====
 
 export interface Account {

@@ -68,7 +68,7 @@ Folgende Module sind stark an Browser-/Runtime-APIs gebunden und werden primaer 
 Testbare reine Logik:
 - `src/shared/physics.ts` — Vektormathe, Gravitation, Kollision
 - `src/shared/game-simulation.ts` — Tick-Simulation, Damage, Respawn, Portale, Modi, Mutatoren, Map-Events
-- `src/shared/constants.ts` — Config-Validierung (Mods, 8 Modi, 6 Maps, 9 Mutatoren)
+- `src/shared/constants.ts` — Config-Validierung (Mods, 8 Modi, 6 Maps, 9 Mutatoren, Cosmetics, Challenges, Achievements)
 - `src/shared/maps.ts` — 6 Map-Definitionen (inkl. Portale und zerstoerbare Asteroiden)
 - `src/client/game/bot.ts` — KI-Logik (teilweise testbar)
 

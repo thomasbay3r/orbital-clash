@@ -15,7 +15,10 @@ import {
 import {
   SHIP_CONFIGS, COLORS, DIFFICULTY_PRESETS, DEFAULT_DIFFICULTY_INDEX,
   DRIFT_FRICTION, BOOST_MULTIPLIER,
+  SKIN_CONFIGS, TRAIL_CONFIGS, KILL_EFFECT_CONFIGS, TITLE_CONFIGS,
+  DAILY_CHALLENGE_POOL, WEEKLY_CHALLENGE_POOL, ACHIEVEMENT_CONFIGS,
 } from "../../shared/constants";
+import { ChallengeProgress } from "../../shared/types";
 import {
   add, scale, normalize, vecFromAngle, angleDiff, clamp,
   applyGravity, reflectVelocity,
@@ -23,7 +26,8 @@ import {
 import { MAPS } from "../../shared/maps";
 
 type Screen = "menu" | "mod-select" | "settings" | "playing" | "online-lobby"
-  | "friends" | "login" | "register" | "profile" | "post-game" | "matchmaking";
+  | "friends" | "login" | "register" | "profile" | "post-game" | "matchmaking"
+  | "challenges" | "cosmetics";
 
 const SHIP_OPTIONS: ShipClass[] = ["viper", "titan", "specter", "nova"];
 const MAP_OPTIONS: MapId[] = [
@@ -137,6 +141,13 @@ export class Game {
   private friendsSearchMode = false;
   private friendsRequestsMode = false;
 
+  // Progression state
+  private dailyChallenges: ChallengeProgress[] = [];
+  private weeklyChallenges: ChallengeProgress[] = [];
+  private unlockedAchievements: string[] = [];
+  private challengeScrollOffset = 0;
+  private cosmeticCategory = 0; // 0=skins, 1=trails, 2=effects, 3=titles
+
   constructor(private canvas: HTMLCanvasElement) {
     this.renderer = new Renderer(canvas);
     this.input = new InputHandler(canvas);
@@ -186,6 +197,10 @@ export class Game {
       killFeed: this.killFeed,
       postGameData: this.postGameData,
       selectedMutators: this.selectedMutators,
+      dailyChallenges: this.dailyChallenges,
+      weeklyChallenges: this.weeklyChallenges,
+      unlockedAchievements: this.unlockedAchievements,
+      cosmeticCategory: this.cosmeticCategory,
     };
   }
 
@@ -273,6 +288,12 @@ export class Game {
       case "matchmaking":
         this.matchmakingTimer += dt;
         this.drawMatchmaking();
+        break;
+      case "challenges":
+        this.drawChallenges();
+        break;
+      case "cosmetics":
+        this.drawCosmetics();
         break;
     }
 
@@ -476,6 +497,20 @@ export class Game {
         this.currentUser = null;
         this.screen = "menu";
       }
+      if (key === "c") this.screen = "challenges";
+      if (key === "k") this.screen = "cosmetics";
+    } else if (this.screen === "challenges") {
+      if (key === "escape") this.screen = "profile";
+      if (key === "arrowup") this.challengeScrollOffset = Math.max(0, this.challengeScrollOffset - 1);
+      if (key === "arrowdown") this.challengeScrollOffset++;
+    } else if (this.screen === "cosmetics") {
+      if (key === "escape") this.screen = "profile";
+      if (key === "1") this.cosmeticCategory = 0;
+      if (key === "2") this.cosmeticCategory = 1;
+      if (key === "3") this.cosmeticCategory = 2;
+      if (key === "4") this.cosmeticCategory = 3;
+      if (key === "arrowleft") this.cosmeticCategory = Math.max(0, this.cosmeticCategory - 1);
+      if (key === "arrowright") this.cosmeticCategory = Math.min(3, this.cosmeticCategory + 1);
     } else if (this.screen === "matchmaking") {
       if (key === "escape") {
         this.cancelMatchmaking();
@@ -638,6 +673,84 @@ export class Game {
     }
   }
 
+  private initChallengesIfNeeded(): void {
+    if (this.dailyChallenges.length === 0) {
+      // Pick 3 random daily challenges
+      const pool = [...DAILY_CHALLENGE_POOL];
+      for (let i = 0; i < 3 && pool.length > 0; i++) {
+        const idx = Math.floor(Math.random() * pool.length);
+        const config = pool.splice(idx, 1)[0];
+        this.dailyChallenges.push({
+          challengeId: config.id,
+          progress: 0,
+          target: config.target,
+          completed: false,
+        });
+      }
+    }
+    if (this.weeklyChallenges.length === 0) {
+      // Pick 3 random weekly challenges
+      const pool = [...WEEKLY_CHALLENGE_POOL];
+      for (let i = 0; i < 3 && pool.length > 0; i++) {
+        const idx = Math.floor(Math.random() * pool.length);
+        const config = pool.splice(idx, 1)[0];
+        this.weeklyChallenges.push({
+          challengeId: config.id,
+          progress: 0,
+          target: config.target,
+          completed: false,
+        });
+      }
+    }
+  }
+
+  private updateChallengeProgress(): void {
+    if (!this.gameState) return;
+    const player = this.gameState.players[this.localPlayerId];
+    if (!player) return;
+
+    const stats = this.gameState.playerStats[this.localPlayerId];
+    const isWinner = this.gameState.winnerId === this.localPlayerId;
+    const noDeath = player.deaths === 0;
+
+    const allChallenges = [...this.dailyChallenges, ...this.weeklyChallenges];
+    for (const c of allChallenges) {
+      if (c.completed) continue;
+      const config = [...DAILY_CHALLENGE_POOL, ...WEEKLY_CHALLENGE_POOL].find((d) => d.id === c.challengeId);
+      if (!config) continue;
+
+      switch (config.type) {
+        case "play-games": c.progress++; break;
+        case "get-kills": c.progress += player.eliminations; break;
+        case "win-games": if (isWinner) c.progress++; break;
+        case "gravity-kills": c.progress += stats?.gravityKills ?? 0; break;
+        case "use-special": c.progress++; break; // Approximate: 1 per game
+        case "no-death-win": if (isWinner && noDeath) c.progress++; break;
+        case "damage-dealt": c.progress += stats?.damageDealt ?? 0; break;
+        case "mode-variety": c.progress++; break; // Simplified
+      }
+
+      if (c.progress >= c.target) {
+        c.progress = c.target;
+        c.completed = true;
+      }
+    }
+  }
+
+  private checkAchievements(): void {
+    if (!this.gameState) return;
+    const player = this.gameState.players[this.localPlayerId];
+    if (!player) return;
+
+    // first-game: always earned after first game
+    if (!this.unlockedAchievements.includes("first-game")) {
+      this.unlockedAchievements.push("first-game");
+    }
+
+    // cartographer: check if all maps played (simplified - just track current map)
+    // These would need persistent storage for full tracking; simplified for local play
+  }
+
   private getMods(): ModLoadout {
     const weaponMods: Array<ModLoadout["weapon"]> = ["piercing", "ricochet", "gravity-sync", "rapid-fire"];
     const shipMods: Array<ModLoadout["ship"]> = ["afterburner", "hull-plating", "drift-master", "gravity-anchor"];
@@ -779,6 +892,10 @@ export class Game {
   private transitionToPostGame(): void {
     if (!this.gameState) return;
 
+    // Track challenge progress and achievements before generating post-game data
+    this.updateChallengeProgress();
+    this.checkAchievements();
+
     if (this.isOnline) {
       // Post-game data comes from server via handleServerMessage
       this.connection.disconnect();
@@ -811,6 +928,15 @@ export class Game {
     const xpGained = 50 + (localStats?.shotsHit ?? 0) * 2 +
       (this.gameState.winnerId === this.localPlayerId ? 20 : 0);
 
+    const challengeProgress = [...this.dailyChallenges, ...this.weeklyChallenges]
+      .filter((c) => c.progress > 0)
+      .map((c) => ({
+        challengeId: c.challengeId,
+        progress: c.progress,
+        target: c.target,
+        completed: c.completed,
+      }));
+
     return {
       matchResult: {
         matchId: crypto.randomUUID?.()?.slice(0, 8) ?? "local",
@@ -822,7 +948,7 @@ export class Game {
       },
       xpGained,
       newLevel: null,
-      challengeProgress: [],
+      challengeProgress,
     };
   }
 
@@ -854,6 +980,8 @@ export class Game {
     const mapId = MAP_OPTIONS[this.selectedMap];
     const shipClass = SHIP_OPTIONS[this.selectedShip];
     const mods = this.getMods();
+
+    this.initChallengesIfNeeded();
 
     const controlMode = CONTROL_MODE_OPTIONS[this.selectedControlMode];
     this.gameState = createGameState(mode, mapId, this.selectedMutators);
@@ -1607,19 +1735,29 @@ export class Game {
       ctx.fillText("Nicht angemeldet", w / 2, 150);
     }
 
+    // Challenge/Cosmetic counters
+    const completedDaily = this.dailyChallenges.filter((c) => c.completed).length;
+    const completedWeekly = this.weeklyChallenges.filter((c) => c.completed).length;
+    ctx.font = "14px monospace";
+    ctx.fillStyle = "#ffaa00";
+    ctx.fillText(`Herausforderungen: ${completedDaily}/${this.dailyChallenges.length} taeglich, ${completedWeekly}/${this.weeklyChallenges.length} woechentlich`, w / 2, 260);
+
+    ctx.fillStyle = "#ff44aa";
+    ctx.fillText(`Erfolge: ${this.unlockedAchievements.length}/${ACHIEVEMENT_CONFIGS.length}`, w / 2, 290);
+
     if (this.api.isGuest) {
       ctx.font = "14px monospace";
       ctx.fillStyle = "#ffaa00";
-      ctx.fillText("Registriere dich um Freunde hinzuzufuegen und Cosmetics freizuschalten!", w / 2, 280);
+      ctx.fillText("Registriere dich um Freunde hinzuzufuegen und Cosmetics freizuschalten!", w / 2, 330);
     }
 
     ctx.font = "14px monospace";
     ctx.fillStyle = COLORS.uiDim;
+    const profileHints = ["[C] Herausforderungen  |  [K] Cosmetics  |  [Esc] Zurueck"];
     if (this.api.isAccount) {
-      ctx.fillText("[L] Abmelden  |  [Esc] Zurueck", w / 2, 350);
-    } else {
-      ctx.fillText("[Esc] Zurueck", w / 2, 350);
+      profileHints.push("[L] Abmelden");
     }
+    ctx.fillText(profileHints.join("  |  "), w / 2, 380);
   }
 
   private drawMatchmaking(): void {
@@ -1681,6 +1819,293 @@ export class Game {
         // Just allow Tab to navigate between fields
       }
     }
+  }
+
+  // ===== Challenges & Cosmetics Screens =====
+
+  private drawChallenges(): void {
+    const ctx = this.canvas.getContext("2d")!;
+    const w = this.canvas.width = window.innerWidth;
+    const h = this.canvas.height = window.innerHeight;
+
+    ctx.fillStyle = COLORS.background;
+    ctx.fillRect(0, 0, w, h);
+
+    ctx.font = "bold 36px monospace";
+    ctx.textAlign = "center";
+    ctx.fillStyle = COLORS.ui;
+    ctx.fillText("HERAUSFORDERUNGEN", w / 2, 60);
+
+    // Daily Challenges
+    ctx.font = "bold 20px monospace";
+    ctx.fillStyle = "#ffaa00";
+    ctx.fillText("TAEGLICH", w / 2, 110);
+
+    for (let i = 0; i < this.dailyChallenges.length; i++) {
+      const c = this.dailyChallenges[i];
+      const config = DAILY_CHALLENGE_POOL.find((d) => d.id === c.challengeId);
+      if (!config) continue;
+      const y = 140 + i * 55;
+
+      // Background
+      ctx.fillStyle = c.completed ? "#112211" : "#111122";
+      ctx.fillRect(w / 2 - 300, y, 600, 45);
+      ctx.strokeStyle = c.completed ? "#44ff88" : "#333355";
+      ctx.lineWidth = 1;
+      ctx.strokeRect(w / 2 - 300, y, 600, 45);
+
+      // Name + description
+      ctx.font = "bold 13px monospace";
+      ctx.textAlign = "left";
+      ctx.fillStyle = c.completed ? "#44ff88" : COLORS.ui;
+      ctx.fillText(config.name, w / 2 - 285, y + 18);
+      ctx.font = "11px monospace";
+      ctx.fillStyle = COLORS.uiDim;
+      ctx.fillText(config.description, w / 2 - 285, y + 35);
+
+      // Progress bar
+      const barX = w / 2 + 100;
+      const barW = 140;
+      const barH = 10;
+      const barY = y + 15;
+      const progress = Math.min(1, c.progress / c.target);
+      ctx.fillStyle = "#111133";
+      ctx.fillRect(barX, barY, barW, barH);
+      ctx.fillStyle = c.completed ? "#44ff88" : "#ffaa00";
+      ctx.fillRect(barX, barY, barW * progress, barH);
+
+      // Progress text
+      ctx.font = "10px monospace";
+      ctx.textAlign = "center";
+      ctx.fillStyle = COLORS.ui;
+      ctx.fillText(`${c.progress}/${c.target}`, barX + barW / 2, barY + barH + 14);
+
+      // XP reward
+      ctx.textAlign = "right";
+      ctx.fillStyle = c.completed ? "#44ff88" : "#ffaa00";
+      ctx.fillText(`+${config.xpReward} XP`, w / 2 + 290, y + 20);
+    }
+
+    // Weekly Challenges
+    const weeklyY = 160 + this.dailyChallenges.length * 55;
+    ctx.font = "bold 20px monospace";
+    ctx.textAlign = "center";
+    ctx.fillStyle = "#4488ff";
+    ctx.fillText("WOECHENTLICH", w / 2, weeklyY);
+
+    for (let i = 0; i < this.weeklyChallenges.length; i++) {
+      const c = this.weeklyChallenges[i];
+      const config = WEEKLY_CHALLENGE_POOL.find((d) => d.id === c.challengeId);
+      if (!config) continue;
+      const y = weeklyY + 25 + i * 55;
+
+      ctx.fillStyle = c.completed ? "#112211" : "#111122";
+      ctx.fillRect(w / 2 - 300, y, 600, 45);
+      ctx.strokeStyle = c.completed ? "#44ff88" : "#333355";
+      ctx.lineWidth = 1;
+      ctx.strokeRect(w / 2 - 300, y, 600, 45);
+
+      ctx.font = "bold 13px monospace";
+      ctx.textAlign = "left";
+      ctx.fillStyle = c.completed ? "#44ff88" : COLORS.ui;
+      ctx.fillText(config.name, w / 2 - 285, y + 18);
+      ctx.font = "11px monospace";
+      ctx.fillStyle = COLORS.uiDim;
+      ctx.fillText(config.description, w / 2 - 285, y + 35);
+
+      const barX = w / 2 + 100;
+      const barW = 140;
+      const barH = 10;
+      const barY = y + 15;
+      const progress = Math.min(1, c.progress / c.target);
+      ctx.fillStyle = "#111133";
+      ctx.fillRect(barX, barY, barW, barH);
+      ctx.fillStyle = c.completed ? "#44ff88" : "#4488ff";
+      ctx.fillRect(barX, barY, barW * progress, barH);
+
+      ctx.font = "10px monospace";
+      ctx.textAlign = "center";
+      ctx.fillStyle = COLORS.ui;
+      ctx.fillText(`${c.progress}/${c.target}`, barX + barW / 2, barY + barH + 14);
+
+      ctx.textAlign = "right";
+      ctx.fillStyle = c.completed ? "#44ff88" : "#4488ff";
+      ctx.fillText(`+${config.xpReward} XP`, w / 2 + 290, y + 20);
+    }
+
+    // Empty state
+    if (this.dailyChallenges.length === 0 && this.weeklyChallenges.length === 0) {
+      ctx.font = "16px monospace";
+      ctx.textAlign = "center";
+      ctx.fillStyle = COLORS.uiDim;
+      ctx.fillText("Spiele eine Runde um Herausforderungen zu erhalten!", w / 2, 200);
+    }
+
+    // Achievements section
+    const achY = weeklyY + 50 + this.weeklyChallenges.length * 55;
+    ctx.font = "bold 20px monospace";
+    ctx.textAlign = "center";
+    ctx.fillStyle = "#ff44aa";
+    ctx.fillText("ERFOLGE", w / 2, achY);
+
+    for (let i = 0; i < ACHIEVEMENT_CONFIGS.length; i++) {
+      const ach = ACHIEVEMENT_CONFIGS[i];
+      const unlocked = this.unlockedAchievements.includes(ach.id);
+      const y = achY + 25 + i * 40;
+      if (y > h - 60) break; // Don't draw off-screen
+
+      ctx.fillStyle = unlocked ? "#221122" : "#111122";
+      ctx.fillRect(w / 2 - 300, y, 600, 34);
+      ctx.strokeStyle = unlocked ? "#ff44aa" : "#333355";
+      ctx.lineWidth = 1;
+      ctx.strokeRect(w / 2 - 300, y, 600, 34);
+
+      ctx.font = "bold 12px monospace";
+      ctx.textAlign = "left";
+      ctx.fillStyle = unlocked ? "#ff44aa" : COLORS.uiDim;
+      ctx.fillText(`${unlocked ? "[x]" : "[ ]"} ${ach.name}`, w / 2 - 285, y + 15);
+
+      ctx.font = "10px monospace";
+      ctx.fillStyle = COLORS.uiDim;
+      ctx.fillText(ach.description, w / 2 - 285, y + 28);
+
+      ctx.textAlign = "right";
+      ctx.fillStyle = unlocked ? "#ff44aa" : "#555577";
+      ctx.fillText(ach.reward, w / 2 + 290, y + 20);
+    }
+
+    // Navigation hint
+    ctx.font = "12px monospace";
+    ctx.textAlign = "center";
+    ctx.fillStyle = COLORS.uiDim;
+    ctx.fillText("[Esc] Zurueck zum Profil", w / 2, h - 25);
+  }
+
+  private drawCosmetics(): void {
+    const ctx = this.canvas.getContext("2d")!;
+    const w = this.canvas.width = window.innerWidth;
+    const h = this.canvas.height = window.innerHeight;
+
+    ctx.fillStyle = COLORS.background;
+    ctx.fillRect(0, 0, w, h);
+
+    ctx.font = "bold 36px monospace";
+    ctx.textAlign = "center";
+    ctx.fillStyle = COLORS.ui;
+    ctx.fillText("COSMETICS", w / 2, 60);
+
+    // Category tabs
+    const categories = ["Skins", "Trails", "Effekte", "Titel"];
+    const catColors = ["#ff6644", "#44aaff", "#ff44aa", "#ffaa00"];
+    for (let i = 0; i < categories.length; i++) {
+      const tx = w / 2 - 225 + i * 150;
+      const isActive = i === this.cosmeticCategory;
+
+      ctx.font = isActive ? "bold 16px monospace" : "14px monospace";
+      ctx.fillStyle = isActive ? catColors[i] : COLORS.uiDim;
+      ctx.fillText(`[${i + 1}] ${categories[i]}`, tx, 100);
+
+      if (isActive) {
+        ctx.fillStyle = catColors[i];
+        ctx.fillRect(tx - 50, 108, 100, 2);
+      }
+    }
+
+    const level = this.currentUser?.level ?? 1;
+    let items: { name: string; detail: string; unlockLevel: number; color: string }[] = [];
+
+    if (this.cosmeticCategory === 0) {
+      // Skins
+      items = SKIN_CONFIGS.map((s) => ({
+        name: s.name,
+        detail: `${SHIP_CONFIGS[s.shipClass].name} | Farbe`,
+        unlockLevel: s.unlockLevel,
+        color: s.color,
+      }));
+    } else if (this.cosmeticCategory === 1) {
+      // Trails
+      items = TRAIL_CONFIGS.map((t) => ({
+        name: t.name,
+        detail: `${t.particleCount} Partikel | ${t.lifetime}ms`,
+        unlockLevel: t.unlockLevel,
+        color: t.color,
+      }));
+    } else if (this.cosmeticCategory === 2) {
+      // Kill effects
+      items = KILL_EFFECT_CONFIGS.map((e) => ({
+        name: e.name,
+        detail: `${e.colors.length} Farben`,
+        unlockLevel: e.unlockLevel,
+        color: e.colors[0],
+      }));
+    } else {
+      // Titles
+      items = TITLE_CONFIGS.map((t) => ({
+        name: t.name,
+        detail: "",
+        unlockLevel: t.unlockLevel,
+        color: "#ffaa00",
+      }));
+    }
+
+    // Draw items grid
+    const cols = 3;
+    const itemW = 190;
+    const itemH = 60;
+    const startX = w / 2 - (cols * itemW) / 2;
+    const startY = 130;
+
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+      const col = i % cols;
+      const row = Math.floor(i / cols);
+      const x = startX + col * (itemW + 10);
+      const y = startY + row * (itemH + 10);
+      if (y > h - 80) break;
+
+      const unlocked = item.unlockLevel === 0 || level >= item.unlockLevel;
+
+      // Card
+      ctx.fillStyle = unlocked ? "#111133" : "#0a0a1a";
+      ctx.fillRect(x, y, itemW, itemH);
+      ctx.strokeStyle = unlocked ? item.color : "#222233";
+      ctx.lineWidth = 1;
+      ctx.strokeRect(x, y, itemW, itemH);
+
+      // Color swatch
+      ctx.fillStyle = unlocked ? item.color : "#333333";
+      ctx.fillRect(x + 8, y + 8, 12, 12);
+
+      // Name
+      ctx.font = "bold 11px monospace";
+      ctx.textAlign = "left";
+      ctx.fillStyle = unlocked ? COLORS.ui : "#444466";
+      ctx.fillText(item.name, x + 28, y + 18);
+
+      // Detail
+      if (item.detail) {
+        ctx.font = "9px monospace";
+        ctx.fillStyle = COLORS.uiDim;
+        ctx.fillText(item.detail, x + 28, y + 34);
+      }
+
+      // Lock / Level info
+      if (!unlocked) {
+        ctx.font = "9px monospace";
+        ctx.fillStyle = "#ff4444";
+        ctx.fillText(item.unlockLevel > 0 ? `Lvl ${item.unlockLevel}` : "Erfolg", x + 28, y + 50);
+      } else {
+        ctx.font = "9px monospace";
+        ctx.fillStyle = "#44ff88";
+        ctx.fillText("Freigeschaltet", x + 28, y + 50);
+      }
+    }
+
+    // Navigation
+    ctx.font = "12px monospace";
+    ctx.textAlign = "center";
+    ctx.fillStyle = COLORS.uiDim;
+    ctx.fillText("[1-4] Kategorie  |  [Esc] Zurueck", w / 2, h - 25);
   }
 
   // ===== Existing Screen Drawings =====

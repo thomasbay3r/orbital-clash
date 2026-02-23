@@ -82,3 +82,81 @@ test.describe("Kill Feed & Post-Game State", () => {
     expect("currentUser" in state).toBe(true);
   });
 });
+
+test.describe("Challenges & Cosmetics Screens", () => {
+  test.beforeEach(async ({ page }) => {
+    await page.goto("/");
+    await waitForGameReady(page);
+  });
+
+  test("C key from profile opens challenges screen", async ({ page }) => {
+    await page.keyboard.press("p");
+    await waitForScreen(page, "profile");
+    await page.keyboard.press("c");
+    await waitForScreen(page, "challenges");
+  });
+
+  test("Escape from challenges returns to profile", async ({ page }) => {
+    await page.keyboard.press("p");
+    await waitForScreen(page, "profile");
+    await page.keyboard.press("c");
+    await waitForScreen(page, "challenges");
+    await page.keyboard.press("Escape");
+    await waitForScreen(page, "profile");
+  });
+
+  test("K key from profile opens cosmetics screen", async ({ page }) => {
+    await page.keyboard.press("p");
+    await waitForScreen(page, "profile");
+    await page.keyboard.press("k");
+    await waitForScreen(page, "cosmetics");
+  });
+
+  test("Escape from cosmetics returns to profile", async ({ page }) => {
+    await page.keyboard.press("p");
+    await waitForScreen(page, "profile");
+    await page.keyboard.press("k");
+    await waitForScreen(page, "cosmetics");
+    await page.keyboard.press("Escape");
+    await waitForScreen(page, "profile");
+  });
+
+  test("cosmetics category can be changed with 1-4 keys", async ({ page }) => {
+    await page.keyboard.press("p");
+    await waitForScreen(page, "profile");
+    await page.keyboard.press("k");
+    await waitForScreen(page, "cosmetics");
+
+    let state = await getTestState(page);
+    expect(state.cosmeticCategory).toBe(0); // skins
+
+    await page.keyboard.press("2");
+    state = await getTestState(page);
+    expect(state.cosmeticCategory).toBe(1); // trails
+
+    await page.keyboard.press("4");
+    state = await getTestState(page);
+    expect(state.cosmeticCategory).toBe(3); // titles
+  });
+
+  test("challenges are initialized after playing a game", async ({ page }) => {
+    // Start and play a quick game
+    await page.keyboard.press("Enter");
+    await waitForScreen(page, "mod-select");
+    await page.keyboard.press("Enter");
+    await waitForScreen(page, "settings");
+    await page.keyboard.press("Enter");
+    await waitForScreen(page, "playing");
+
+    // Check that challenges were initialized
+    const state = await getTestState(page);
+    expect(state.dailyChallenges.length).toBe(3);
+    expect(state.weeklyChallenges.length).toBe(3);
+  });
+
+  test("test state exposes unlockedAchievements", async ({ page }) => {
+    const state = await getTestState(page);
+    expect(state.unlockedAchievements).toBeDefined();
+    expect(Array.isArray(state.unlockedAchievements)).toBe(true);
+  });
+});

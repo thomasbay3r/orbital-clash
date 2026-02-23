@@ -33,20 +33,21 @@ src/
     guest-names.ts       # Space-themed guest name generator
   shared/
     types.ts             # All TypeScript types (game, social, auth)
-    constants.ts         # Game config (ships, weapons, specials, mods, difficulty presets)
+    constants.ts         # Game config (ships, weapons, specials, mods, difficulty presets, cosmetics, challenges, achievements)
     physics.ts           # Vector math, gravity, collision detection
     maps.ts              # Map definitions (6 maps: 3 original + black-hole, wormhole-station, debris-field)
     game-simulation.ts   # Core game simulation engine (shared client/server)
     physics.test.ts      # Physics tests
     game-simulation.test.ts  # Simulation tests (85 tests)
     mods.test.ts         # Mod/mode/map tests
+    progression.test.ts  # Cosmetic/challenge/achievement config tests (35 tests)
   server/
     guest-names.test.ts  # Guest name generator tests
 e2e/
   helpers.ts             # E2E test utilities (getTestState, waitForScreen)
   menu-flow.spec.ts      # Menu navigation E2E tests (20 tests)
   gameplay.spec.ts       # Gameplay E2E tests (16 tests)
-  social-screens.spec.ts # Social screen navigation E2E tests (9 tests)
+  social-screens.spec.ts # Social screen navigation E2E tests (16 tests)
 public/
   index.html             # HTML entry point with canvas
 ```
@@ -112,6 +113,12 @@ The core game loop (`game-simulation.ts`) is shared between client and server.
 - Guest-to-account migration preserves progress
 - XP, levels, ranks (bronze through diamond)
 
+### Progression System
+- **Cosmetics**: 24 skins (6/ship), 8 trails, 7 kill effects, 8 emotes, 8 titles, 7 badges
+- **Challenges**: Daily (3/day) and weekly (3/week) from rotating pools, XP rewards
+- **Achievements**: 10 unique milestones with cosmetic rewards
+- Challenges/cosmetics screens accessible from profile (C/K keys)
+
 ### Social Features
 - **Friends**: Add/remove, search by username, recent players, online presence
 - **Presence**: KV-based polling (120s TTL heartbeat, 30s client interval)
@@ -128,11 +135,13 @@ The core game loop (`game-simulation.ts`) is shared between client and server.
 ## Menu Flow
 ```
 Menu (ship, map, mode) → Mod-Select (weapon, ship, passive, control mode)
-  → Settings (difficulty, bot count) → Local Game
+  → Settings (difficulty, bot count, mutators) → Local Game
   → Online Lobby (create/join room) → Multiplayer Game
 Additional screens (from menu):
   F → Friends (account only)  |  P → Profile  |  L → Login/Register
   Space → Quick Play (matchmaking)
+Profile sub-screens:
+  C → Challenges  |  K → Cosmetics
 Post-game: Scoreboard → Enter=Rematch  |  Esc=Menu
 ```
 
