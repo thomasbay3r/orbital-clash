@@ -613,7 +613,7 @@ export class Renderer {
     config: typeof SHIP_CONFIGS[keyof typeof SHIP_CONFIGS],
     isLocal: boolean,
   ): void {
-    this.ctx.font = "10px monospace";
+    this.ctx.font = "12px monospace";
     this.ctx.textAlign = "center";
     this.ctx.fillStyle = isLocal ? config.color : COLORS.uiDim;
     this.ctx.fillText(
@@ -785,7 +785,7 @@ export class Renderer {
     // Active mutator display (top-left below scoreboard)
     if (state.mutators.length > 0) {
       const scoreboardEnd = Object.keys(state.players).length * 18 + 30;
-      ctx.font = "10px monospace";
+      ctx.font = "12px monospace";
       ctx.textAlign = "left";
       ctx.fillStyle = "#888888";
       ctx.fillText("Mutatoren:", 20, scoreboardEnd);
@@ -862,7 +862,7 @@ export class Renderer {
 
     // Room code (below timer, top right) for online games
     if (roomCode) {
-      ctx.font = "11px monospace";
+      ctx.font = "12px monospace";
       ctx.textAlign = "right";
       if (copiedFeedback > 0) {
         ctx.fillStyle = "#44ff88";
@@ -1076,7 +1076,7 @@ export class Renderer {
       ctx.fillStyle = isSelected ? config.color : (isHovered ? COLORS.ui : COLORS.uiDim);
       ctx.fillText(config.name, bx + bw / 2, by + 20);
 
-      ctx.font = "10px monospace";
+      ctx.font = "11px monospace";
       ctx.fillStyle = COLORS.uiDim;
       ctx.fillText(`HP: ${config.maxHp}`, bx + bw / 2, by + 40);
       ctx.fillText(`SPD: ${config.speed}`, bx + bw / 2, by + 54);
@@ -1114,7 +1114,7 @@ export class Renderer {
         ctx.fillRect(bx, by, bw, bh);
       }
 
-      ctx.font = "11px monospace";
+      ctx.font = "12px monospace";
       ctx.fillStyle = isSelected ? COLORS.ui : (isHovered ? COLORS.ui : COLORS.uiDim);
       ctx.fillText(mapNames[i], bx + bw / 2, by + 22);
 
@@ -1150,7 +1150,7 @@ export class Renderer {
         ctx.fillRect(bx, by, bw, bh);
       }
 
-      ctx.font = "11px monospace";
+      ctx.font = "12px monospace";
       ctx.fillStyle = isSelected ? COLORS.ui : (isHovered ? COLORS.ui : COLORS.uiDim);
       ctx.fillText(modeNames[i], bx + bw / 2, by + 22);
 
