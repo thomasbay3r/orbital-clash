@@ -160,3 +160,81 @@ test.describe("Challenges & Cosmetics Screens", () => {
     expect(Array.isArray(state.unlockedAchievements)).toBe(true);
   });
 });
+
+test.describe("Polish Features (Phase 4)", () => {
+  test.beforeEach(async ({ page }) => {
+    await page.goto("/");
+    await waitForGameReady(page);
+  });
+
+  test("emote wheel starts closed", async ({ page }) => {
+    // Start a local game
+    await page.keyboard.press("Enter");
+    await waitForScreen(page, "mod-select");
+    await page.keyboard.press("Enter");
+    await waitForScreen(page, "settings");
+    await page.keyboard.press("Enter");
+    await waitForScreen(page, "playing");
+
+    const state = await getTestState(page);
+    expect(state.emoteWheelOpen).toBe(false);
+  });
+
+  test("V key toggles emote wheel during gameplay", async ({ page }) => {
+    await page.keyboard.press("Enter");
+    await waitForScreen(page, "mod-select");
+    await page.keyboard.press("Enter");
+    await waitForScreen(page, "settings");
+    await page.keyboard.press("Enter");
+    await waitForScreen(page, "playing");
+
+    await page.keyboard.press("v");
+    let state = await getTestState(page);
+    expect(state.emoteWheelOpen).toBe(true);
+
+    await page.keyboard.press("v");
+    state = await getTestState(page);
+    expect(state.emoteWheelOpen).toBe(false);
+  });
+
+  test("Escape closes emote wheel", async ({ page }) => {
+    await page.keyboard.press("Enter");
+    await waitForScreen(page, "mod-select");
+    await page.keyboard.press("Enter");
+    await waitForScreen(page, "settings");
+    await page.keyboard.press("Enter");
+    await waitForScreen(page, "playing");
+
+    await page.keyboard.press("v");
+    let state = await getTestState(page);
+    expect(state.emoteWheelOpen).toBe(true);
+
+    await page.keyboard.press("Escape");
+    state = await getTestState(page);
+    expect(state.emoteWheelOpen).toBe(false);
+  });
+
+  test("killStreak starts at zero", async ({ page }) => {
+    await page.keyboard.press("Enter");
+    await waitForScreen(page, "mod-select");
+    await page.keyboard.press("Enter");
+    await waitForScreen(page, "settings");
+    await page.keyboard.press("Enter");
+    await waitForScreen(page, "playing");
+
+    const state = await getTestState(page);
+    expect(state.killStreak).toBe(0);
+  });
+
+  test("slowmo starts inactive", async ({ page }) => {
+    await page.keyboard.press("Enter");
+    await waitForScreen(page, "mod-select");
+    await page.keyboard.press("Enter");
+    await waitForScreen(page, "settings");
+    await page.keyboard.press("Enter");
+    await waitForScreen(page, "playing");
+
+    const state = await getTestState(page);
+    expect(state.slowmoActive).toBe(false);
+  });
+});
