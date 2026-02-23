@@ -20,7 +20,7 @@ export const en: Record<keyof typeof de, string> = {
   "gameover.teamWins": "Team {team} wins!",
   "gameover.playerWins": "{name} wins!",
   "gameover.score": "{name}: {kills} kills / {deaths} deaths",
-  "gameover.returnToMenu": "Press ENTER to return to menu",
+  "gameover.returnToMenu": "Press ENTER for results",
 
   // ===== Mode HUD =====
   "mode.tag.youAreIt": "YOU ARE IT! (Hit someone!)",

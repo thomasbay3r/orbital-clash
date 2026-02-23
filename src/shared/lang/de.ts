@@ -18,7 +18,7 @@ export const de = {
   "gameover.teamWins": "Team {team} gewinnt!",
   "gameover.playerWins": "{name} gewinnt!",
   "gameover.score": "{name}: {kills} Kills / {deaths} Tode",
-  "gameover.returnToMenu": "ENTER zum Menue",
+  "gameover.returnToMenu": "ENTER zur Auswertung",
 
   // ===== Mode HUD =====
   "mode.tag.youAreIt": "DU BIST ES! (Treffe jemanden!)",
