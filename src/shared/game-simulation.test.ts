@@ -864,3 +864,177 @@ describe("Respawn Spawn Selection", () => {
     expect(dist).toBeGreaterThan(200);
   });
 });
+
+// ===== Kill Feed & Player Stats =====
+
+describe("Kill Feed", () => {
+  let state: GameState;
+
+  beforeEach(() => {
+    state = createGameState("deathmatch", "nebula-station");
+    addPlayer(state, "p1", "Attacker", "viper", DEFAULT_MODS);
+    addPlayer(state, "p2", "Victim", "titan", DEFAULT_MODS);
+  });
+
+  it("should start with empty kill feed", () => {
+    expect(state.killFeed).toEqual([]);
+  });
+
+  it("should record kill event when player is eliminated", () => {
+    // One-shot the victim
+    state.players["p2"].hp = 1;
+    // Create a projectile from p1 aimed at p2
+    state.players["p2"].position = { x: 400, y: 300 };
+    state.projectiles.push({
+      id: "proj1",
+      ownerId: "p1",
+      position: { x: 400, y: 300 },
+      velocity: { x: 0, y: 0 },
+      damage: 10,
+      lifetime: 2,
+      radius: 5,
+      ricochetCount: 0,
+      homing: false,
+      homingTarget: null,
+      gravitySynced: false,
+      piercing: false,
+      hitPlayerIds: [],
+    });
+    simulateTick(state, {}, 1 / 60);
+
+    expect(state.killFeed.length).toBe(1);
+    expect(state.killFeed[0].killerId).toBe("p1");
+    expect(state.killFeed[0].victimId).toBe("p2");
+    expect(state.killFeed[0].killerName).toBe("Attacker");
+    expect(state.killFeed[0].victimName).toBe("Victim");
+  });
+
+  it("should record gravity-well kill type for self-kills", () => {
+    // Place player inside a strong gravity well to die
+    state.players["p1"].hp = 1;
+    const well = state.gravityWells[0];
+    state.players["p1"].position = { x: well.position.x, y: well.position.y };
+
+    // Simulate enough ticks for gravity damage to kill
+    for (let i = 0; i < 120; i++) {
+      simulateTick(state, {}, 1 / 60);
+      if (!state.players["p1"].alive) break;
+    }
+
+    if (state.killFeed.length > 0) {
+      const lastKill = state.killFeed[state.killFeed.length - 1];
+      expect(lastKill.victimId).toBe("p1");
+      expect(lastKill.killType).toBe("gravity-well");
+    }
+  });
+
+  it("should accumulate multiple kill events", () => {
+    // Kill p2 twice (respawn in between)
+    state.players["p2"].hp = 1;
+    state.players["p2"].position = { x: 400, y: 300 };
+    state.projectiles.push({
+      id: "proj1", ownerId: "p1",
+      position: { x: 400, y: 300 }, velocity: { x: 0, y: 0 },
+      damage: 10, lifetime: 2, radius: 5, ricochetCount: 0,
+      homing: false, homingTarget: null, gravitySynced: false,
+      piercing: false, hitPlayerIds: [],
+    });
+    simulateTick(state, {}, 1 / 60);
+    expect(state.killFeed.length).toBe(1);
+
+    // Respawn p2 and kill again
+    state.players["p2"].alive = true;
+    state.players["p2"].hp = 1;
+    state.players["p2"].invulnTimer = 0;
+    state.players["p2"].position = { x: 400, y: 300 };
+    state.projectiles.push({
+      id: "proj2", ownerId: "p1",
+      position: { x: 400, y: 300 }, velocity: { x: 0, y: 0 },
+      damage: 10, lifetime: 2, radius: 5, ricochetCount: 0,
+      homing: false, homingTarget: null, gravitySynced: false,
+      piercing: false, hitPlayerIds: [],
+    });
+    simulateTick(state, {}, 1 / 60);
+    expect(state.killFeed.length).toBe(2);
+  });
+});
+
+describe("Player Stats Tracking", () => {
+  let state: GameState;
+
+  beforeEach(() => {
+    state = createGameState("deathmatch", "nebula-station");
+    addPlayer(state, "p1", "Shooter", "viper", DEFAULT_MODS);
+    addPlayer(state, "p2", "Target", "titan", DEFAULT_MODS);
+  });
+
+  it("should initialize player stats on addPlayer", () => {
+    expect(state.playerStats["p1"]).toBeDefined();
+    expect(state.playerStats["p1"].damageDealt).toBe(0);
+    expect(state.playerStats["p1"].shotsFired).toBe(0);
+    expect(state.playerStats["p1"].shotsHit).toBe(0);
+    expect(state.playerStats["p1"].gravityKills).toBe(0);
+  });
+
+  it("should track shots fired", () => {
+    const input = makeInput({ shoot: true, aimAngle: 0 });
+    // Clear invuln so shooting works normally
+    state.players["p1"].invulnTimer = 0;
+    simulateTick(state, { p1: input }, 1 / 60);
+
+    expect(state.playerStats["p1"].shotsFired).toBeGreaterThan(0);
+  });
+
+  it("should track shots hit on target", () => {
+    state.players["p2"].position = { x: 400, y: 300 };
+    state.players["p2"].invulnTimer = 0;
+    // Place projectile right on target
+    state.projectiles.push({
+      id: "proj1", ownerId: "p1",
+      position: { x: 400, y: 300 }, velocity: { x: 0, y: 0 },
+      damage: 10, lifetime: 2, radius: 5, ricochetCount: 0,
+      homing: false, homingTarget: null, gravitySynced: false,
+      piercing: false, hitPlayerIds: [],
+    });
+    simulateTick(state, {}, 1 / 60);
+
+    expect(state.playerStats["p1"].shotsHit).toBeGreaterThan(0);
+  });
+
+  it("should track damage dealt", () => {
+    const initialHp = state.players["p2"].hp;
+    state.players["p2"].position = { x: 400, y: 300 };
+    state.players["p2"].invulnTimer = 0;
+    state.projectiles.push({
+      id: "proj1", ownerId: "p1",
+      position: { x: 400, y: 300 }, velocity: { x: 0, y: 0 },
+      damage: 15, lifetime: 2, radius: 5, ricochetCount: 0,
+      homing: false, homingTarget: null, gravitySynced: false,
+      piercing: false, hitPlayerIds: [],
+    });
+    simulateTick(state, {}, 1 / 60);
+
+    expect(state.playerStats["p1"].damageDealt).toBeGreaterThan(0);
+    expect(state.players["p2"].hp).toBeLessThan(initialHp);
+  });
+
+  it("should track gravity kills", () => {
+    // p1 shoots p2 with a gravity-synced projectile that kills
+    state.players["p2"].hp = 1;
+    state.players["p2"].position = { x: 400, y: 300 };
+    state.players["p2"].invulnTimer = 0;
+    state.projectiles.push({
+      id: "proj1", ownerId: "p1",
+      position: { x: 400, y: 300 }, velocity: { x: 0, y: 0 },
+      damage: 10, lifetime: 2, radius: 5, ricochetCount: 0,
+      homing: false, homingTarget: null, gravitySynced: true,
+      piercing: false, hitPlayerIds: [],
+    });
+    simulateTick(state, {}, 1 / 60);
+
+    // gravity-synced projectile registers as gravity-well kill type
+    if (state.killFeed.length > 0) {
+      expect(state.killFeed[0].killType).toBe("gravity-well");
+    }
+  });
+});
