@@ -3,7 +3,10 @@ import {
   createGameState, addPlayer, removePlayer, simulateTick,
 } from "./game-simulation";
 import { GameState, PlayerInput, ModLoadout } from "./types";
-import { INVULNERABILITY_TIME } from "./constants";
+import {
+  INVULNERABILITY_TIME, POTATO_TIMER, CAPTURE_WIN_SCORE,
+  SURVIVAL_RESPAWNS,
+} from "./constants";
 
 const DEFAULT_MODS: ModLoadout = {
   weapon: "piercing",
@@ -1025,5 +1028,280 @@ describe("Player Stats Tracking", () => {
     if (state.killFeed.length > 0) {
       expect(state.killFeed[0].killType).toBe("gravity-well");
     }
+  });
+});
+
+// ===== Phase 2: New Maps =====
+
+describe("New Maps", () => {
+  it("should create black-hole map with massive center well", () => {
+    const state = createGameState("deathmatch", "black-hole");
+    expect(state.mapId).toBe("black-hole");
+    expect(state.gravityWells.length).toBeGreaterThanOrEqual(1);
+    // Center well should be very strong
+    const centerWell = state.gravityWells.find((w) => w.strength >= 2.5);
+    expect(centerWell).toBeDefined();
+  });
+
+  it("should create wormhole-station map with portals", () => {
+    const state = createGameState("deathmatch", "wormhole-station");
+    expect(state.mapId).toBe("wormhole-station");
+    expect(state.portals.length).toBeGreaterThan(0);
+    // Portals should be linked in pairs
+    for (const portal of state.portals) {
+      const linked = state.portals.find((p) => p.id === portal.linkedPortalId);
+      expect(linked).toBeDefined();
+    }
+  });
+
+  it("should create debris-field map with many asteroids", () => {
+    const state = createGameState("deathmatch", "debris-field");
+    expect(state.mapId).toBe("debris-field");
+    expect(state.asteroids.length).toBeGreaterThanOrEqual(10);
+  });
+});
+
+// ===== Phase 2: Mutators =====
+
+describe("Mutators", () => {
+  it("should create game state with mutators", () => {
+    const state = createGameState("deathmatch", "nebula-station", ["big-head", "speed-demon"]);
+    expect(state.mutators).toContain("big-head");
+    expect(state.mutators).toContain("speed-demon");
+  });
+
+  it("zero-g mutator should remove all gravity wells", () => {
+    const state = createGameState("deathmatch", "nebula-station", ["zero-g"]);
+    expect(state.gravityWells.length).toBe(0);
+  });
+
+  it("hypergravity mutator should triple gravity well strength", () => {
+    const normal = createGameState("deathmatch", "nebula-station");
+    const hyper = createGameState("deathmatch", "nebula-station", ["hypergravity"]);
+    if (normal.gravityWells.length > 0) {
+      expect(hyper.gravityWells[0].strength).toBe(normal.gravityWells[0].strength * 3);
+    }
+  });
+
+  it("glass-cannon mutator should set player HP to 1", () => {
+    const state = createGameState("deathmatch", "nebula-station", ["glass-cannon"]);
+    addPlayer(state, "p1", "Player1", "viper", DEFAULT_MODS);
+    expect(state.players["p1"].hp).toBe(1);
+    expect(state.players["p1"].maxHp).toBe(1);
+  });
+
+  it("speed-demon mutator should double player speed", () => {
+    const normal = createGameState("deathmatch", "nebula-station");
+    addPlayer(normal, "p1", "Player1", "viper", DEFAULT_MODS);
+
+    const fast = createGameState("deathmatch", "nebula-station", ["speed-demon"]);
+    addPlayer(fast, "p1", "Player1", "viper", DEFAULT_MODS);
+
+    // Speed demon player should move faster when given thrust
+    const normalInputs = { p1: makeInput({ up: true }) };
+    const fastInputs = { p1: makeInput({ up: true }) };
+    simulateTick(normal, normalInputs, 0.1);
+    simulateTick(fast, fastInputs, 0.1);
+
+    // Fast player should have higher velocity magnitude
+    const normalV = Math.sqrt(normal.players["p1"].velocity.x ** 2 + normal.players["p1"].velocity.y ** 2);
+    const fastV = Math.sqrt(fast.players["p1"].velocity.x ** 2 + fast.players["p1"].velocity.y ** 2);
+    expect(fastV).toBeGreaterThan(normalV);
+  });
+});
+
+// ===== Phase 2: New Game Modes =====
+
+describe("Asteroid Tag Mode", () => {
+  it("should initialize with correct tag state", () => {
+    const state = createGameState("asteroid-tag", "nebula-station");
+    expect(state.gameMode).toBe("asteroid-tag");
+    expect(state.timeRemaining).toBe(180);
+    expect(state.tagItPlayerId).toBeNull(); // No players yet
+  });
+
+  it("should assign It player when two players exist", () => {
+    const state = createGameState("asteroid-tag", "nebula-station");
+    addPlayer(state, "p1", "Player1", "viper", DEFAULT_MODS);
+    addPlayer(state, "p2", "Player2", "titan", DEFAULT_MODS);
+    state.players["p1"].invulnerable = false;
+    state.players["p2"].invulnerable = false;
+    simulateTick(state, {}, 1 / 60);
+    // One of the two players should be "It"
+    expect(["p1", "p2"]).toContain(state.tagItPlayerId);
+  });
+
+  it("should deal DPS to the It player", () => {
+    const state = createGameState("asteroid-tag", "nebula-station");
+    addPlayer(state, "p1", "Player1", "titan", DEFAULT_MODS);
+    addPlayer(state, "p2", "Player2", "viper", DEFAULT_MODS);
+    // Clear invulnerability
+    state.players["p1"].invulnerable = false;
+    state.players["p1"].invulnerabilityTimer = 0;
+    state.players["p2"].invulnerable = false;
+    state.players["p2"].invulnerabilityTimer = 0;
+
+    simulateTick(state, {}, 1 / 60);
+    const itId = state.tagItPlayerId;
+    expect(itId).not.toBeNull();
+
+    const itPlayer = state.players[itId!];
+    const hpBefore = itPlayer.hp;
+    simulateTick(state, {}, 1); // 1 second tick
+    expect(itPlayer.hp).toBeLessThan(hpBefore);
+  });
+});
+
+describe("Hot Potato Mode", () => {
+  it("should initialize with correct potato state", () => {
+    const state = createGameState("hot-potato", "nebula-station");
+    expect(state.gameMode).toBe("hot-potato");
+    expect(state.timeRemaining).toBe(120);
+    expect(state.potatoCarrierId).toBeNull();
+  });
+
+  it("should assign potato carrier and start timer with 2 players", () => {
+    const state = createGameState("hot-potato", "nebula-station");
+    addPlayer(state, "p1", "Player1", "viper", DEFAULT_MODS);
+    addPlayer(state, "p2", "Player2", "titan", DEFAULT_MODS);
+    state.players["p1"].invulnerable = false;
+    state.players["p2"].invulnerable = false;
+    simulateTick(state, {}, 1 / 60);
+    expect(["p1", "p2"]).toContain(state.potatoCarrierId);
+    expect(state.potatoTimer).toBeCloseTo(POTATO_TIMER, 0);
+  });
+
+  it("should count down potato timer", () => {
+    const state = createGameState("hot-potato", "nebula-station");
+    addPlayer(state, "p1", "Player1", "viper", DEFAULT_MODS);
+    addPlayer(state, "p2", "Player2", "titan", DEFAULT_MODS);
+    state.players["p1"].invulnerable = false;
+    state.players["p2"].invulnerable = false;
+
+    simulateTick(state, {}, 1 / 60);
+    const afterInit = state.potatoTimer;
+    simulateTick(state, {}, 1); // 1 second
+    expect(state.potatoTimer).toBeLessThan(afterInit);
+  });
+});
+
+describe("Capture the Core Mode", () => {
+  it("should initialize with correct core state", () => {
+    const state = createGameState("capture-the-core", "nebula-station");
+    expect(state.gameMode).toBe("capture-the-core");
+    expect(state.timeRemaining).toBe(240);
+    expect(state.cores).toBeDefined();
+    expect(state.cores.red.atBase).toBe(true);
+    expect(state.cores.blue.atBase).toBe(true);
+    expect(state.captureScores.red).toBe(0);
+    expect(state.captureScores.blue).toBe(0);
+  });
+
+  it("should assign players to teams on join", () => {
+    const state = createGameState("capture-the-core", "nebula-station");
+    addPlayer(state, "p1", "Player1", "viper", DEFAULT_MODS);
+    addPlayer(state, "p2", "Player2", "titan", DEFAULT_MODS);
+    // Teams assigned in addPlayer
+    expect(state.teams["p1"]).toBe("red");
+    expect(state.teams["p2"]).toBe("blue");
+  });
+
+  it("should require correct score to win", () => {
+    expect(CAPTURE_WIN_SCORE).toBe(3);
+  });
+});
+
+describe("Survival Wave Mode", () => {
+  it("should initialize with correct wave state", () => {
+    const state = createGameState("survival-wave", "nebula-station");
+    expect(state.gameMode).toBe("survival-wave");
+    expect(state.timeRemaining).toBe(600);
+    expect(state.waveNumber).toBe(1); // starts at wave 1
+    expect(state.sharedLives).toBe(SURVIVAL_RESPAWNS);
+  });
+
+  it("should start with wave pause", () => {
+    const state = createGameState("survival-wave", "nebula-station");
+    addPlayer(state, "p1", "Player1", "viper", DEFAULT_MODS);
+    simulateTick(state, {}, 1 / 60);
+    expect(state.wavePause).toBe(true);
+    expect(state.wavePauseTimer).toBeGreaterThan(0);
+  });
+
+  it("should count down wave pause timer", () => {
+    const state = createGameState("survival-wave", "nebula-station");
+    addPlayer(state, "p1", "Player1", "viper", DEFAULT_MODS);
+    state.players["p1"].invulnerable = false;
+    state.players["p1"].invulnerabilityTimer = 0;
+
+    simulateTick(state, {}, 1 / 60);
+    const initialTimer = state.wavePauseTimer;
+    simulateTick(state, {}, 1);
+    expect(state.wavePauseTimer).toBeLessThan(initialTimer);
+  });
+});
+
+// ===== Phase 2: Portals =====
+
+describe("Portal System", () => {
+  it("should create portals for wormhole-station map", () => {
+    const state = createGameState("deathmatch", "wormhole-station");
+    expect(state.portals.length).toBe(4);
+  });
+
+  it("portals should be linked in pairs", () => {
+    const state = createGameState("deathmatch", "wormhole-station");
+    for (const portal of state.portals) {
+      const linked = state.portals.find((p) => p.id === portal.linkedPortalId);
+      expect(linked).toBeDefined();
+      expect(linked!.linkedPortalId).toBe(portal.id);
+    }
+  });
+
+  it("should teleport player near portal to linked portal", () => {
+    const state = createGameState("deathmatch", "wormhole-station");
+    addPlayer(state, "p1", "Player1", "viper", DEFAULT_MODS);
+    state.players["p1"].invulnerable = false;
+    state.players["p1"].invulnerabilityTimer = 0;
+
+    if (state.portals.length >= 2) {
+      const portal = state.portals[0];
+      const linked = state.portals.find((p) => p.id === portal.linkedPortalId)!;
+
+      // Move player to portal center
+      state.players["p1"].position = { x: portal.position.x, y: portal.position.y };
+      state.players["p1"].velocity = { x: 50, y: 0 };
+
+      simulateTick(state, { p1: makeInput() }, 1 / 60);
+
+      // Player should be near the linked portal
+      const dx = state.players["p1"].position.x - linked.position.x;
+      const dy = state.players["p1"].position.y - linked.position.y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      expect(dist).toBeLessThan(linked.radius * 3); // Should be near linked portal
+    }
+  });
+});
+
+// ===== Phase 2: Map Events =====
+
+describe("Map Events", () => {
+  it("should initialize with empty map events", () => {
+    const state = createGameState("deathmatch", "nebula-station");
+    expect(state.mapEvents).toBeDefined();
+    expect(state.mapEvents.length).toBe(0);
+  });
+
+  it("should have a next event timer", () => {
+    const state = createGameState("deathmatch", "nebula-station");
+    expect(state.nextEventTimer).toBeGreaterThan(0);
+  });
+
+  it("should count down event timer", () => {
+    const state = createGameState("deathmatch", "nebula-station");
+    addPlayer(state, "p1", "Player1", "viper", DEFAULT_MODS);
+    const initial = state.nextEventTimer;
+    simulateTick(state, {}, 1);
+    expect(state.nextEventTimer).toBeLessThan(initial);
   });
 });

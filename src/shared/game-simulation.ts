@@ -179,6 +179,13 @@ export function addPlayer(
     shotsHit: 0,
     gravityKills: 0,
   };
+
+  // Assign to team for capture-the-core
+  if (state.gameMode === "capture-the-core") {
+    const redCount = Object.values(state.teams).filter((t) => t === "red").length;
+    const blueCount = Object.values(state.teams).filter((t) => t === "blue").length;
+    state.teams[id] = redCount <= blueCount ? "red" : "blue";
+  }
 }
 
 export function removePlayer(state: GameState, id: string): void {

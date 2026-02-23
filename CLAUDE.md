@@ -35,10 +35,10 @@ src/
     types.ts             # All TypeScript types (game, social, auth)
     constants.ts         # Game config (ships, weapons, specials, mods, difficulty presets)
     physics.ts           # Vector math, gravity, collision detection
-    maps.ts              # Map definitions (3 maps)
+    maps.ts              # Map definitions (6 maps: 3 original + black-hole, wormhole-station, debris-field)
     game-simulation.ts   # Core game simulation engine (shared client/server)
     physics.test.ts      # Physics tests
-    game-simulation.test.ts  # Simulation tests (59 tests)
+    game-simulation.test.ts  # Simulation tests (85 tests)
     mods.test.ts         # Mod/mode/map tests
   server/
     guest-names.test.ts  # Guest name generator tests
@@ -79,8 +79,10 @@ The core game loop (`game-simulation.ts`) is shared between client and server.
 - **4 weapon types**: Dual-Shot, Heavy-Shot, Homing-Missile, Spread-Shot
 - **4 special abilities**: Phase Dash, Shield Bubble, EMP Pulse, Gravity Bomb
 - **12 mods**: 4 weapon, 4 ship, 4 passive — each modifies gameplay
-- **4 game modes**: Deathmatch, Duel, King of the Asteroid, Gravity Shift
-- **3 maps**: Nebula Station, Asteroid Belt, The Singularity
+- **8 game modes**: Deathmatch, Duel, King of the Asteroid, Gravity Shift, Asteroid Tag, Hot Potato, Capture the Core, Survival Wave
+- **6 maps**: Nebula Station, Asteroid Belt, The Singularity, Black Hole, Wormhole Station, Debris Field
+- **9 mutators**: Hypergravity, Zero-G, Big Head, Ricochet Arena, Glass Cannon, Mystery Loadout, Fog of War, Speed Demon, Friendly Fire
+- **5 map events**: Asteroid Rain, Gravity Surge, Power Core, Shield Bubble, EMP Storm
 - **2 control modes**: Standard (WASD absolute), Ship-Relative (W/S forward/back, A/D strafe)
 
 ### Bot System
