@@ -29,6 +29,7 @@ export class Renderer {
   private starField: Vec2[] = [];
   private time = 0;
   private clickRegions: ClickableRegion[] = [];
+  accountButtonLabel: string | null = null;
 
   constructor(private canvas: HTMLCanvasElement) {
     const ctx = canvas.getContext("2d");
@@ -1161,6 +1162,12 @@ export class Renderer {
 
     // "Multiplayer" button
     this.drawButton(ctx, w / 2, 658, 200, 36, "Multiplayer", COLORS.uiDim, "button-online", hoveredId);
+
+    // "Anmelden" / "Profil" button
+    const accountLabel = this.accountButtonLabel;
+    if (accountLabel) {
+      this.drawButton(ctx, w / 2, 710, 200, 32, accountLabel, "#ffaa00", "button-account", hoveredId);
+    }
 
     // Controls
     ctx.font = "12px monospace";

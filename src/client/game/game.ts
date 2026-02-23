@@ -276,6 +276,7 @@ export class Game {
 
     switch (this.screen) {
       case "menu": {
+        this.renderer.accountButtonLabel = this.api.isAccount ? "Profil" : "Anmelden";
         const hovered = this.renderer.hitTest(mx, my);
         this.renderer.drawMenu(this.selectedShip, this.selectedMap, this.selectedMode, hovered);
         this.drawMenuOverlay(mx, my);
@@ -630,6 +631,16 @@ export class Game {
       if (hit === "button-online") {
         this.onlineFlow = true;
         this.screen = "mod-select";
+      }
+      if (hit === "button-account") {
+        if (this.api.isAccount) {
+          this.screen = "profile";
+        } else {
+          this.textInputFields = { email: "", password: "", username: "", password2: "" };
+          this.textInputActive = "email";
+          this.textInputError = "";
+          this.screen = "login";
+        }
       }
     } else if (this.screen === "mod-select") {
       const hit = this.hitTestLocal(mx, my);
@@ -1598,10 +1609,6 @@ export class Game {
     ctx.fillStyle = "#555555";
     const hints = "Space = Quick Play  |  F = Freunde  |  P = Profil";
     ctx.fillText(hints, w / 2, ctx.canvas.height - 15);
-
-    if (!this.api.isAccount) {
-      ctx.fillText("L = Anmelden", w / 2, ctx.canvas.height - 30);
-    }
 
     // Error message
     if (this.textInputError) {
