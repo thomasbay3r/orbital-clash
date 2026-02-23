@@ -120,10 +120,10 @@ The core game loop (`game-simulation.ts`) is shared between client and server.
 - Challenges/cosmetics screens accessible from profile (C/K keys)
 
 ### Game Feel / Polish
-- **Screenshake**: Camera shake on death (large) and local player damage (small), fast 0.85 decay
-- **Slowmo**: 0.8s slowmo effect when game ends (last kill), client-side only
-- **Killstreak HUD**: Shows streak counter (Doppelkill, Triplekill, etc.) when streak >= 2
-- **Emote Wheel**: V key opens radial menu with 8 emotes, 1-8 to select, 3s cooldown, 2s display above ship
+- **Slowmo Zoom**: 1.2s subtle camera zoom-in when game ends (visual only, no simulation change)
+- **Kill Announcements**: Combo (Doppelkill, Triplekill, Multi-Kill) and streak milestones (Unaufhaltsam, Gottgleich)
+- **Emote Wheel**: V key opens radial menu with 8 emotes (unlock-level gated), 1-8 to select, 3s cooldown, 2s display above ship
+- **Emote Sync**: Emotes broadcast via WebSocket in multiplayer (emote message type in ClientMessage/ServerMessage)
 
 ### Social Features
 - **Friends**: Add/remove, search by username, recent players, online presence

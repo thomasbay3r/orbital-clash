@@ -103,6 +103,9 @@ export class GameRoom implements DurableObject {
       case "chat":
         this.handleChat(ws, data.text);
         break;
+      case "emote":
+        this.handleEmote(ws, data.text);
+        break;
       case "rematch-vote":
         this.handleRematchVote(ws);
         break;
@@ -190,6 +193,14 @@ export class GameRoom implements DurableObject {
     if (this.chatMessages.length > 50) this.chatMessages.shift();
 
     const serverMsg: ServerMessage = { type: "chat", message: msg };
+    this.broadcast(JSON.stringify(serverMsg));
+  }
+
+  private handleEmote(ws: WebSocket, text: string): void {
+    const session = this.sessions.get(ws);
+    if (!session || !text || text.length > 30) return;
+
+    const serverMsg: ServerMessage = { type: "emote", playerId: session.playerId, text };
     this.broadcast(JSON.stringify(serverMsg));
   }
 

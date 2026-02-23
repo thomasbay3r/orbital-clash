@@ -298,6 +298,7 @@ export type ClientMessage =
   | { type: "input"; input: PlayerInput }
   | { type: "leave" }
   | { type: "chat"; text: string }
+  | { type: "emote"; text: string }
   | { type: "rematch-vote" };
 
 export type ServerMessage =
@@ -308,6 +309,7 @@ export type ServerMessage =
   | { type: "kill"; event: KillEvent }
   | { type: "error"; message: string }
   | { type: "chat"; message: ChatMessage }
+  | { type: "emote"; playerId: string; text: string }
   | { type: "post-game"; data: PostGameData }
   | { type: "rematch"; votes: number; needed: number };
 

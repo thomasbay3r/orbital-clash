@@ -65,18 +65,8 @@ export class Renderer {
     }
   }
 
-  // Screen shake state
-  private shakeIntensity = 0;
-  private shakeOffsetX = 0;
-  private shakeOffsetY = 0;
-
-  /** Trigger screenshake (called from Game class) */
-  triggerShake(intensity: number): void {
-    this.shakeIntensity = Math.max(this.shakeIntensity, intensity);
-  }
-
   render(state: GameState, localPlayerId: string, dt: number, roomCode?: string, copiedFeedback = 0,
-    extras?: { killStreak?: number; emotes?: Record<string, { text: string; timer: number }> }): void {
+    extras?: { slowmo?: boolean; emotes?: Record<string, { text: string; timer: number }> }): void {
     this.time += dt;
     this.canvas.width = window.innerWidth;
     this.canvas.height = window.innerHeight;
@@ -86,23 +76,15 @@ export class Renderer {
       this.updateCamera(localPlayer, state);
     }
 
-    // Update screenshake
-    if (this.shakeIntensity > 0.1) {
-      this.shakeOffsetX = (Math.random() - 0.5) * this.shakeIntensity * 2;
-      this.shakeOffsetY = (Math.random() - 0.5) * this.shakeIntensity * 2;
-      this.shakeIntensity *= 0.85; // Fast decay
-    } else {
-      this.shakeIntensity = 0;
-      this.shakeOffsetX = 0;
-      this.shakeOffsetY = 0;
-    }
+    // Slowmo zoom effect (brief zoom-in on game end)
+    const slowmoZoom = extras?.slowmo ? 1.05 : 1;
 
     this.ctx.save();
     this.clear();
 
-    // Apply camera transform with screenshake offset
-    this.ctx.translate(this.canvas.width / 2 + this.shakeOffsetX, this.canvas.height / 2 + this.shakeOffsetY);
-    this.ctx.scale(this.camera.zoom, this.camera.zoom);
+    // Apply camera transform
+    this.ctx.translate(this.canvas.width / 2, this.canvas.height / 2);
+    this.ctx.scale(this.camera.zoom * slowmoZoom, this.camera.zoom * slowmoZoom);
     this.ctx.translate(-this.camera.x, -this.camera.y);
 
     this.drawStarField();
@@ -133,11 +115,6 @@ export class Renderer {
     // HUD is drawn in screen space
     if (localPlayer) {
       this.drawHUD(state, localPlayer, roomCode, copiedFeedback);
-    }
-
-    // Killstreak counter
-    if (extras?.killStreak && extras.killStreak >= 2) {
-      this.drawKillstreakHUD(extras.killStreak);
     }
 
     // Mode-specific HUD overlays
@@ -1226,15 +1203,18 @@ export class Renderer {
 
   // ===== Emotes (World Space) =====
 
+  private static readonly EMOTE_DURATION = 2;
+
   private drawEmotes(state: GameState, emotes: Record<string, { text: string; timer: number }>): void {
     const ctx = this.ctx;
     for (const [playerId, emote] of Object.entries(emotes)) {
       if (emote.timer <= 0) continue;
       const player = state.players[playerId];
-      if (!player) continue;
+      if (!player || !player.alive) continue;
 
       const alpha = Math.min(1, emote.timer);
-      const floatY = -40 - (2 - emote.timer) * 10; // Float upward as timer decreases
+      const elapsed = Renderer.EMOTE_DURATION - emote.timer;
+      const floatY = -40 - elapsed * 10;
 
       ctx.save();
       ctx.globalAlpha = alpha;
@@ -1249,16 +1229,24 @@ export class Renderer {
       const py = player.position.y;
       const bx = px - bw / 2;
       const by = py + floatY - bh / 2;
+      const r = 6;
 
       ctx.fillStyle = "rgba(0, 0, 0, 0.7)";
       ctx.beginPath();
-      ctx.roundRect(bx, by, bw, bh, 6);
+      ctx.moveTo(bx + r, by);
+      ctx.lineTo(bx + bw - r, by);
+      ctx.quadraticCurveTo(bx + bw, by, bx + bw, by + r);
+      ctx.lineTo(bx + bw, by + bh - r);
+      ctx.quadraticCurveTo(bx + bw, by + bh, bx + bw - r, by + bh);
+      ctx.lineTo(bx + r, by + bh);
+      ctx.quadraticCurveTo(bx, by + bh, bx, by + bh - r);
+      ctx.lineTo(bx, by + r);
+      ctx.quadraticCurveTo(bx, by, bx + r, by);
+      ctx.closePath();
       ctx.fill();
 
       ctx.strokeStyle = COLORS.ui;
       ctx.lineWidth = 1;
-      ctx.beginPath();
-      ctx.roundRect(bx, by, bw, bh, 6);
       ctx.stroke();
 
       // Emote text
@@ -1266,31 +1254,5 @@ export class Renderer {
       ctx.fillText(emote.text, px, py + floatY + 6);
       ctx.restore();
     }
-  }
-
-  // ===== Killstreak HUD (Screen Space) =====
-
-  private drawKillstreakHUD(killStreak: number): void {
-    const ctx = this.ctx;
-    const w = this.canvas.width;
-
-    const labels: Record<number, string> = {
-      2: "DOPPELKILL!",
-      3: "TRIPLEKILL!",
-      4: "MEGA KILL!",
-      5: "ULTRA KILL!",
-    };
-    const label = killStreak >= 5 ? `${killStreak}x KILL STREAK!` : (labels[killStreak] || `${killStreak}x STREAK`);
-    const color = killStreak >= 5 ? "#ff2222" : killStreak >= 3 ? "#ffaa00" : "#ffdd44";
-
-    ctx.save();
-    ctx.font = "bold 28px monospace";
-    ctx.textAlign = "center";
-    ctx.fillStyle = color;
-    ctx.shadowColor = color;
-    ctx.shadowBlur = 15;
-    ctx.fillText(label, w / 2, 80);
-    ctx.shadowBlur = 0;
-    ctx.restore();
   }
 }

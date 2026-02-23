@@ -1131,7 +1131,7 @@ export class Game {
       }
 
       this.processAudioEvents();
-      const extras = { killStreak: this.killStreak, emotes: this.activeEmotes };
+      const extras = { slowmo: this.slowmoActive, emotes: this.activeEmotes };
       this.renderer.render(this.gameState, this.localPlayerId, dt, this.activeRoomCode, this.copiedFeedbackTimer, extras);
     } else {
       const inputs: Record<string, PlayerInput> = {};
@@ -1140,23 +1140,20 @@ export class Game {
         inputs[bot.id] = bot.getInput(this.gameState);
       }
 
-      // Apply slowmo effect
       const wasGameOver = this.gameState.gameOver;
-      const effectiveDt = this.slowmoActive ? dt * 0.3 : dt;
-      simulateTick(this.gameState, inputs, effectiveDt);
+      simulateTick(this.gameState, inputs, dt);
 
-      // Trigger slowmo on last kill (game just ended)
+      // Trigger slowmo zoom on game end (visual only — simulation is stopped)
       if (this.gameState.gameOver && !wasGameOver) {
         this.slowmoActive = true;
-        this.slowmoTimer = 0.8;
-        this.renderer.triggerShake(16);
+        this.slowmoTimer = 1.2;
       }
 
       // Process new kill events from simulation
       this.processLocalKillFeed();
 
       this.processAudioEvents();
-      const extras = { killStreak: this.killStreak, emotes: this.activeEmotes };
+      const extras = { slowmo: this.slowmoActive, emotes: this.activeEmotes };
       this.renderer.render(this.gameState, this.localPlayerId, dt, undefined, 0, extras);
     }
 
@@ -1186,12 +1183,20 @@ export class Game {
 
   private sendEmote(index: number): void {
     if (this.emoteCooldown > 0) return;
-    const emoteConfigs = EMOTE_CONFIGS;
-    if (index >= emoteConfigs.length) return;
+    if (index >= EMOTE_CONFIGS.length) return;
 
-    const emote = emoteConfigs[index];
+    const emote = EMOTE_CONFIGS[index];
+    const playerLevel = this.currentUser?.level ?? 1;
+    if (emote.unlockLevel > playerLevel) return;
+
     this.activeEmotes[this.localPlayerId] = { text: emote.text, timer: 2 };
-    this.emoteCooldown = 3; // 3s cooldown
+    this.emoteCooldown = 3;
+    this.audio.playShoot(); // Brief UI feedback sound
+
+    // Send to server in online games
+    if (this.isOnline) {
+      this.connection.send({ type: "emote", text: emote.text });
+    }
   }
 
   private drawEmoteWheel(): void {
@@ -1222,22 +1227,28 @@ export class Game {
     ctx.fillText("EMOTES (1-8)", cx, cy - radius - 30);
 
     // Draw emote options in a circle
-    const emoteConfigs = EMOTE_CONFIGS;
-    const count = Math.min(emoteConfigs.length, 8);
+    const playerLevel = this.currentUser?.level ?? 1;
+    const count = Math.min(EMOTE_CONFIGS.length, 8);
     for (let i = 0; i < count; i++) {
       const angle = (i / count) * Math.PI * 2 - Math.PI / 2;
       const ex = cx + Math.cos(angle) * radius;
       const ey = cy + Math.sin(angle) * radius;
+      const locked = EMOTE_CONFIGS[i].unlockLevel > playerLevel;
 
       // Number label
       ctx.font = "bold 12px monospace";
-      ctx.fillStyle = "#888888";
+      ctx.fillStyle = locked ? "#444444" : "#888888";
       ctx.fillText(`${i + 1}`, ex, ey - 14);
 
-      // Emote text
+      // Emote text or lock indicator
       ctx.font = "bold 16px monospace";
-      ctx.fillStyle = this.emoteCooldown > 0 ? "#555555" : "#ffffff";
-      ctx.fillText(emoteConfigs[i].text, ex, ey + 4);
+      if (locked) {
+        ctx.fillStyle = "#444444";
+        ctx.fillText(`Lvl ${EMOTE_CONFIGS[i].unlockLevel}`, ex, ey + 4);
+      } else {
+        ctx.fillStyle = this.emoteCooldown > 0 ? "#555555" : "#ffffff";
+        ctx.fillText(EMOTE_CONFIGS[i].text, ex, ey + 4);
+      }
     }
 
     if (this.emoteCooldown > 0) {
@@ -1267,10 +1278,13 @@ export class Game {
       this.comboTimer = 3;
       this.comboCounter++;
 
+      // Combo announcements (rapid multi-kills within 3s)
       if (this.comboCounter === 2) this.showAnnouncement("Doppelkill!");
       else if (this.comboCounter === 3) this.showAnnouncement("Triplekill!");
-      if (this.killStreak === 3) this.showAnnouncement("Killstreak!");
-      else if (this.killStreak === 5) this.showAnnouncement("Unaufhaltsam!");
+      else if (this.comboCounter >= 4) this.showAnnouncement("Multi-Kill!");
+      // Streak milestones (kills without dying)
+      if (this.killStreak === 5) this.showAnnouncement("Unaufhaltsam!");
+      else if (this.killStreak === 10) this.showAnnouncement("Gottgleich!");
     }
     if (event.victimId === this.localPlayerId) {
       this.killStreak = 0;
@@ -1364,16 +1378,12 @@ export class Game {
       const wasAlive = this.prevAliveStates[player.id];
       if (wasAlive && !player.alive) {
         this.audio.playExplosion();
-        this.renderer.triggerShake(12); // Big shake on death
       }
       this.prevAliveStates[player.id] = player.alive;
 
       const prevHp = this.prevPlayerHps[player.id] ?? player.maxHp;
       if (player.hp < prevHp && player.alive) {
         this.audio.playHit();
-        if (player.id === this.localPlayerId) {
-          this.renderer.triggerShake(4); // Small shake when local player takes damage
-        }
       }
       this.prevPlayerHps[player.id] = player.hp;
     }
@@ -1458,6 +1468,9 @@ export class Game {
       case "chat":
         this.chatMessages.push(msg.message);
         if (this.chatMessages.length > 50) this.chatMessages.shift();
+        break;
+      case "emote":
+        this.activeEmotes[msg.playerId] = { text: msg.text, timer: 2 };
         break;
       case "post-game":
         this.postGameData = msg.data;
