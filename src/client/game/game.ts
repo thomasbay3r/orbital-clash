@@ -723,6 +723,34 @@ export class Game {
       if (hit === "btn-do-register") this.doRegister();
       if (hit === "btn-register-back") this.screen = "login";
       if (hit?.startsWith("field-")) this.textInputActive = hit.slice(6);
+    } else if (this.screen === "friends") {
+      const hit = this.hitTestLocal(mx, my);
+      if (!hit) return;
+      if (hit === "btn-friends-search") {
+        this.friendsSearchMode = !this.friendsSearchMode;
+        this.textInputFields = { search: "" };
+        this.textInputActive = "search";
+      }
+      if (hit === "btn-friends-requests") { this.friendsRequestsMode = !this.friendsRequestsMode; }
+      if (hit === "btn-friends-back") this.screen = "menu";
+      if (hit.startsWith("btn-join-friend-")) {
+        const idx = parseInt(hit.split("-")[3]);
+        const friend = this.friends[idx];
+        if (friend?.roomId) this.joinRoom(friend.roomId);
+      }
+    } else if (this.screen === "challenges") {
+      const hit = this.hitTestLocal(mx, my);
+      if (!hit) return;
+      if (hit === "btn-challenges-back") this.screen = "profile";
+    } else if (this.screen === "cosmetics") {
+      const hit = this.hitTestLocal(mx, my);
+      if (!hit) return;
+      if (hit.startsWith("btn-cosmetics-tab-")) { this.cosmeticCategory = parseInt(hit.split("-")[3]); }
+      if (hit === "btn-cosmetics-back") this.screen = "profile";
+    } else if (this.screen === "matchmaking") {
+      const hit = this.hitTestLocal(mx, my);
+      if (!hit) return;
+      if (hit === "btn-matchmaking-cancel") { this.cancelMatchmaking(); this.screen = "menu"; }
     } else if (this.screen === "playing" && this.isOnline && this.activeRoomCode) {
       const w = window.innerWidth;
       if (mx >= w - 160 && mx <= w - 10 && my >= 42 && my <= 68) {
@@ -1727,6 +1755,9 @@ export class Game {
     const ctx = this.canvas.getContext("2d")!;
     const w = this.canvas.width = window.innerWidth;
     const h = this.canvas.height = window.innerHeight;
+    this.menuClickRegions = [];
+    const mx = this.input.getMouseX();
+    const my = this.input.getMouseY();
 
     ctx.fillStyle = COLORS.background;
     ctx.fillRect(0, 0, w, h);
@@ -1777,6 +1808,7 @@ export class Game {
       if (friend.presence === "online-ingame" && friend.roomId) {
         ctx.fillStyle = "#44ff88";
         ctx.fillText("[Beitreten]", w / 2 + 200, y + 4);
+        this.menuClickRegions.push({ x: w / 2 + 150, y: y - 10, width: 120, height: 20, id: `btn-join-friend-${i}` });
       }
     }
 
@@ -1796,11 +1828,10 @@ export class Game {
       }
     }
 
-    // Bottom hints
-    ctx.font = "12px monospace";
-    ctx.textAlign = "center";
-    ctx.fillStyle = COLORS.uiDim;
-    ctx.fillText("S = Suchen  |  A = Anfragen  |  Esc = Zurueck", w / 2, h - 30);
+    // Bottom buttons
+    this.drawMenuButton(ctx, w / 2 - 170, h - 35, 140, 34, "Suchen", COLORS.ui, "btn-friends-search", mx, my);
+    this.drawMenuButton(ctx, w / 2, h - 35, 140, 34, "Anfragen", COLORS.nova, "btn-friends-requests", mx, my);
+    this.drawMenuButton(ctx, w / 2 + 170, h - 35, 140, 34, "Zurueck", COLORS.uiDim, "btn-friends-back", mx, my);
 
     // Search mode overlay
     if (this.friendsSearchMode) {
@@ -1959,6 +1990,9 @@ export class Game {
     const ctx = this.canvas.getContext("2d")!;
     const w = this.canvas.width = window.innerWidth;
     const h = this.canvas.height = window.innerHeight;
+    this.menuClickRegions = [];
+    const mx = this.input.getMouseX();
+    const my = this.input.getMouseY();
 
     ctx.fillStyle = COLORS.background;
     ctx.fillRect(0, 0, w, h);
@@ -1979,7 +2013,7 @@ export class Game {
     const remaining = Math.max(0, 30 - Math.floor(this.matchmakingTimer));
     ctx.fillText(`Bot-Spiel in ${remaining}s falls kein Match`, w / 2, h / 2 + 50);
 
-    ctx.fillText("[Esc] Abbrechen", w / 2, h / 2 + 90);
+    this.drawMenuButton(ctx, w / 2, h / 2 + 90, 160, 34, "Abbrechen", COLORS.gravityWell, "btn-matchmaking-cancel", mx, my);
   }
 
   private drawInputField(
@@ -2014,6 +2048,9 @@ export class Game {
     const ctx = this.canvas.getContext("2d")!;
     const w = this.canvas.width = window.innerWidth;
     const h = this.canvas.height = window.innerHeight;
+    this.menuClickRegions = [];
+    const mx = this.input.getMouseX();
+    const my = this.input.getMouseY();
 
     ctx.fillStyle = COLORS.background;
     ctx.fillRect(0, 0, w, h);
@@ -2161,17 +2198,17 @@ export class Game {
       ctx.fillText(ach.reward, w / 2 + 290, y + 20);
     }
 
-    // Navigation hint
-    ctx.font = "12px monospace";
-    ctx.textAlign = "center";
-    ctx.fillStyle = COLORS.uiDim;
-    ctx.fillText("[Esc] Zurueck zum Profil", w / 2, h - 25);
+    // Navigation button
+    this.drawMenuButton(ctx, w / 2, h - 35, 200, 34, "Zurueck zum Profil", COLORS.uiDim, "btn-challenges-back", mx, my);
   }
 
   private drawCosmetics(): void {
     const ctx = this.canvas.getContext("2d")!;
     const w = this.canvas.width = window.innerWidth;
     const h = this.canvas.height = window.innerHeight;
+    this.menuClickRegions = [];
+    const mx = this.input.getMouseX();
+    const my = this.input.getMouseY();
 
     ctx.fillStyle = COLORS.background;
     ctx.fillRect(0, 0, w, h);
@@ -2181,20 +2218,18 @@ export class Game {
     ctx.fillStyle = COLORS.ui;
     ctx.fillText("COSMETICS", w / 2, 60);
 
-    // Category tabs
+    // Category tabs as clickable buttons
     const categories = ["Skins", "Trails", "Effekte", "Titel"];
     const catColors = ["#ff6644", "#44aaff", "#ff44aa", "#ffaa00"];
     for (let i = 0; i < categories.length; i++) {
       const tx = w / 2 - 225 + i * 150;
       const isActive = i === this.cosmeticCategory;
-
-      ctx.font = isActive ? "bold 16px monospace" : "14px monospace";
-      ctx.fillStyle = isActive ? catColors[i] : COLORS.uiDim;
-      ctx.fillText(`[${i + 1}] ${categories[i]}`, tx, 100);
+      const tabColor = isActive ? catColors[i] : COLORS.uiDim;
+      this.drawMenuButton(ctx, tx, 100, 120, 30, categories[i], tabColor, `btn-cosmetics-tab-${i}`, mx, my);
 
       if (isActive) {
         ctx.fillStyle = catColors[i];
-        ctx.fillRect(tx - 50, 108, 100, 2);
+        ctx.fillRect(tx - 50, 118, 100, 2);
       }
     }
 
@@ -2288,11 +2323,8 @@ export class Game {
       }
     }
 
-    // Navigation
-    ctx.font = "12px monospace";
-    ctx.textAlign = "center";
-    ctx.fillStyle = COLORS.uiDim;
-    ctx.fillText("[1-4] Kategorie  |  [Esc] Zurueck", w / 2, h - 25);
+    // Navigation button
+    this.drawMenuButton(ctx, w / 2, h - 35, 140, 34, "Zurueck", COLORS.uiDim, "btn-cosmetics-back", mx, my);
   }
 
   // ===== Existing Screen Drawings =====
