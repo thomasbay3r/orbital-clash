@@ -154,9 +154,27 @@ export interface Particle {
   alpha: number;
 }
 
+// ===== Capture the Core =====
+
+export interface CoreState {
+  position: Vec2;
+  carrierId: string | null;
+  droppedTimer: number; // cooldown before pickup after drop
+  atBase: boolean;
+}
+
 // ===== Map =====
 
-export type MapId = "nebula-station" | "asteroid-belt" | "the-singularity";
+export type MapId = "nebula-station" | "asteroid-belt" | "the-singularity"
+  | "black-hole" | "wormhole-station" | "debris-field";
+
+export interface Portal {
+  id: string;
+  position: Vec2;
+  radius: number;
+  linkedPortalId: string;
+  color: string;
+}
 
 export interface MapConfig {
   id: MapId;
@@ -166,13 +184,39 @@ export interface MapConfig {
   gravityWells: Omit<GravityWell, "isTemporary" | "lifetime">[];
   asteroids: Omit<Asteroid, "rotation" | "rotationSpeed">[];
   spawnPoints: Vec2[];
+  portals?: Portal[];
+  destructibleAsteroids?: boolean;
 }
 
 // ===== Game State =====
 
 export type ControlMode = "absolute" | "ship-relative";
 
-export type GameMode = "deathmatch" | "king-of-the-asteroid" | "gravity-shift" | "duel";
+export type GameMode = "deathmatch" | "king-of-the-asteroid" | "gravity-shift" | "duel"
+  | "asteroid-tag" | "survival-wave" | "hot-potato" | "capture-the-core";
+
+// ===== Mutators =====
+
+export type MutatorId = "hypergravity" | "zero-g" | "big-head" | "ricochet-arena"
+  | "glass-cannon" | "mystery-loadout" | "fog-of-war" | "speed-demon" | "friendly-fire";
+
+export interface MutatorConfig {
+  id: MutatorId;
+  name: string;
+  description: string;
+}
+
+// ===== Map Events =====
+
+export type MapEventId = "asteroid-rain" | "gravity-surge" | "power-core" | "shield-bubble" | "emp-storm";
+
+export interface MapEvent {
+  id: MapEventId;
+  name: string;
+  duration: number; // seconds
+  timer: number; // countdown
+  active: boolean;
+}
 
 // ===== Kill Feed Types =====
 
@@ -195,6 +239,7 @@ export interface GameState {
   asteroids: Asteroid[];
   pickups: Pickup[];
   particles: Particle[];
+  portals: Portal[];
   timeRemaining: number; // seconds
   gameMode: GameMode;
   mapId: MapId;
@@ -202,6 +247,7 @@ export interface GameState {
   kothScores: Record<string, number>;
   gameOver: boolean;
   winnerId: string | null;
+  winnerTeam: string | null;
   killFeed: KillEvent[];
   playerStats: Record<string, {
     damageDealt: number;
@@ -209,6 +255,26 @@ export interface GameState {
     shotsHit: number;
     gravityKills: number;
   }>;
+  // Mutators
+  mutators: MutatorId[];
+  // Map events
+  mapEvents: MapEvent[];
+  nextEventTimer: number;
+  // Asteroid Tag state
+  tagItPlayerId: string | null;
+  // Survival Wave state
+  waveNumber: number;
+  waveEnemiesRemaining: number;
+  sharedLives: number;
+  wavePause: boolean;
+  wavePauseTimer: number;
+  // Hot Potato state
+  potatoCarrierId: string | null;
+  potatoTimer: number;
+  // Capture the Core state
+  teams: Record<string, string>; // playerId → "red" | "blue"
+  cores: { red: CoreState; blue: CoreState };
+  captureScores: { red: number; blue: number };
 }
 
 // ===== Input / Network =====

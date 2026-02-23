@@ -5,7 +5,7 @@ import { Bot } from "./bot";
 import { Connection } from "../network/connection";
 import { ApiClient } from "../network/api";
 import {
-  GameState, ShipClass, GameMode, MapId, ModLoadout,
+  GameState, ShipClass, GameMode, MapId, ModLoadout, MutatorId,
   PlayerInput, ServerMessage, ControlMode, PlayerState, Vec2,
   AuthUser, KillEvent, PostGameData, ChatMessage, FriendInfo, FriendRequest, Invite,
 } from "../../shared/types";
@@ -26,8 +26,18 @@ type Screen = "menu" | "mod-select" | "settings" | "playing" | "online-lobby"
   | "friends" | "login" | "register" | "profile" | "post-game" | "matchmaking";
 
 const SHIP_OPTIONS: ShipClass[] = ["viper", "titan", "specter", "nova"];
-const MAP_OPTIONS: MapId[] = ["nebula-station", "asteroid-belt", "the-singularity"];
-const MODE_OPTIONS: GameMode[] = ["deathmatch", "king-of-the-asteroid", "gravity-shift", "duel"];
+const MAP_OPTIONS: MapId[] = [
+  "nebula-station", "asteroid-belt", "the-singularity",
+  "black-hole", "wormhole-station", "debris-field",
+];
+const MODE_OPTIONS: GameMode[] = [
+  "deathmatch", "king-of-the-asteroid", "gravity-shift", "duel",
+  "asteroid-tag", "survival-wave", "hot-potato", "capture-the-core",
+];
+const MUTATOR_OPTIONS: MutatorId[] = [
+  "hypergravity", "zero-g", "big-head", "ricochet-arena",
+  "glass-cannon", "mystery-loadout", "fog-of-war", "speed-demon", "friendly-fire",
+];
 const CONTROL_MODE_OPTIONS: ControlMode[] = ["absolute", "ship-relative"];
 const CONTROL_MODE_NAMES = ["Standard (WASD)", "Schiff-Relativ"];
 const CONTROL_MODE_DESCS = ["WASD = Richtung, Maus = Zielen", "W/S = Vor/Zurueck, A/D = Strafen"];
@@ -57,6 +67,7 @@ export class Game {
   private selectedControlMode = 0;
   private selectedDifficulty = DEFAULT_DIFFICULTY_INDEX;
   private selectedBotCount = 3;
+  private selectedMutators: MutatorId[] = [];
 
   // Click regions for mod-select / online-lobby / settings
   private menuClickRegions: ClickableRegion[] = [];
@@ -174,6 +185,7 @@ export class Game {
       currentUser: this.currentUser,
       killFeed: this.killFeed,
       postGameData: this.postGameData,
+      selectedMutators: this.selectedMutators,
     };
   }
 
@@ -369,6 +381,20 @@ export class Game {
       if (key === "arrowdown" || key === "s") {
         this.selectedBotCount = Math.max(1, this.selectedBotCount - 1);
       }
+      // Mutator toggles: M + number
+      if (key === "m") {
+        // Cycle through mutator pages (not needed, just a hint key)
+      }
+      // Toggle mutators with number keys when holding M would be complex,
+      // so use letter keys for common mutators
+      if (key === "g") this.toggleMutator("hypergravity");
+      if (key === "z") this.toggleMutator("zero-g");
+      if (key === "b") this.toggleMutator("big-head");
+      if (key === "r") this.toggleMutator("ricochet-arena");
+      if (key === "c") this.toggleMutator("glass-cannon");
+      if (key === "f") this.toggleMutator("fog-of-war");
+      if (key === "d") this.toggleMutator("speed-demon");
+      if (key === "x") this.toggleMutator("friendly-fire");
     } else if (this.screen === "online-lobby") {
       if (key === "escape") {
         if (this.connectionCheckInterval) {
@@ -559,6 +585,10 @@ export class Game {
       if (!hit) return;
       if (hit.startsWith("difficulty-")) this.selectedDifficulty = parseInt(hit.split("-")[1]);
       if (hit.startsWith("botcount-")) this.selectedBotCount = parseInt(hit.split("-")[1]);
+      if (hit?.startsWith("mutator-")) {
+        const mutId = hit.slice(8) as MutatorId;
+        this.toggleMutator(mutId);
+      }
       if (hit === "button-start-game") this.startLocalGame();
       if (hit === "button-settings-back") this.screen = "mod-select";
     } else if (this.screen === "online-lobby") {
@@ -597,6 +627,15 @@ export class Game {
       }
     }
     return null;
+  }
+
+  private toggleMutator(id: MutatorId): void {
+    const idx = this.selectedMutators.indexOf(id);
+    if (idx >= 0) {
+      this.selectedMutators.splice(idx, 1);
+    } else {
+      this.selectedMutators.push(id);
+    }
   }
 
   private getMods(): ModLoadout {
@@ -805,6 +844,7 @@ export class Game {
     this.killStreak = 0;
     this.postGameData = null;
     this.chatMessages = [];
+    this.selectedMutators = [];
   }
 
   // ===== Local Game =====
@@ -816,7 +856,7 @@ export class Game {
     const mods = this.getMods();
 
     const controlMode = CONTROL_MODE_OPTIONS[this.selectedControlMode];
-    this.gameState = createGameState(mode, mapId);
+    this.gameState = createGameState(mode, mapId, this.selectedMutators);
     addPlayer(this.gameState, this.localPlayerId, this.playerName, shipClass, mods, controlMode);
 
     const botCount = mode === "duel" ? 1 : this.selectedBotCount;
@@ -1833,8 +1873,58 @@ export class Game {
     ctx.fillStyle = COLORS.uiDim;
     ctx.fillText("Q/E = Schwierigkeit  |  W/S = Bots  |  1-5 = Schwierigkeit direkt", w / 2, 360);
 
-    this.drawMenuButton(ctx, w / 2, 410, 220, 44, "LOS GEHTS!", COLORS.ui, "button-start-game", mx, my);
-    this.drawMenuButton(ctx, w / 2, 465, 150, 36, "Zurueck", COLORS.uiDim, "button-settings-back", mx, my);
+    // Mutator selection
+    ctx.font = "bold 18px monospace";
+    ctx.fillStyle = "#aa88ff";
+    ctx.fillText("MUTATOREN", w / 2, 400);
+
+    const mutatorNames: Record<string, string> = {
+      "hypergravity": "Hypergravity", "zero-g": "Zero-G", "big-head": "Big Head",
+      "ricochet-arena": "Ricochet", "glass-cannon": "Glass Cannon",
+      "fog-of-war": "Fog of War", "speed-demon": "Speed Demon", "friendly-fire": "Friendly Fire",
+    };
+    const mutatorKeys: Record<string, string> = {
+      "hypergravity": "G", "zero-g": "Z", "big-head": "B",
+      "ricochet-arena": "R", "glass-cannon": "C",
+      "fog-of-war": "F", "speed-demon": "D", "friendly-fire": "X",
+    };
+
+    // Filter out mystery-loadout from manual selection (it's random)
+    const selectableMutators = MUTATOR_OPTIONS.filter((m) => m !== "mystery-loadout");
+    const cols = 4;
+    for (let i = 0; i < selectableMutators.length; i++) {
+      const mut = selectableMutators[i];
+      const col = i % cols;
+      const row = Math.floor(i / cols);
+      const bx = w / 2 - 310 + col * 158;
+      const by = 415 + row * 42;
+      const bw = 148;
+      const bh = 34;
+      const isActive = this.selectedMutators.includes(mut);
+      const regionId = `mutator-${mut}`;
+      const isHovered = this.hitTestLocal(mx, my) === regionId;
+
+      ctx.strokeStyle = isActive ? "#aa88ff" : (isHovered ? COLORS.ui : "#333355");
+      ctx.lineWidth = isActive ? 2 : 1;
+      ctx.strokeRect(bx, by, bw, bh);
+
+      if (isActive) {
+        ctx.fillStyle = "#aa88ff20";
+        ctx.fillRect(bx, by, bw, bh);
+      } else if (isHovered) {
+        ctx.fillStyle = COLORS.ui + "08";
+        ctx.fillRect(bx, by, bw, bh);
+      }
+
+      ctx.font = "bold 10px monospace";
+      ctx.fillStyle = isActive ? "#cc99ff" : (isHovered ? COLORS.ui : COLORS.uiDim);
+      ctx.fillText(`[${mutatorKeys[mut] || ""}] ${mutatorNames[mut] || mut}`, bx + bw / 2, by + 22);
+
+      this.menuClickRegions.push({ x: bx, y: by, width: bw, height: bh, id: regionId });
+    }
+
+    this.drawMenuButton(ctx, w / 2, 530, 220, 44, "LOS GEHTS!", COLORS.ui, "button-start-game", mx, my);
+    this.drawMenuButton(ctx, w / 2, 585, 150, 36, "Zurueck", COLORS.uiDim, "button-settings-back", mx, my);
   }
 
   private drawOnlineLobby(): void {
