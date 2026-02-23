@@ -335,7 +335,9 @@ export class Game {
     // Text input mode: capture all keys
     if (this.textInputActive) {
       this.handleTextInput(key);
-      return;
+      // If Escape deactivated the field, fall through to screen-specific handlers
+      if (this.textInputActive) return;
+      if (key !== "escape") return;
     }
 
     // Chat input mode during gameplay
@@ -370,7 +372,8 @@ export class Game {
       }
       if (key === "p") this.screen = "profile";
       if (key === "l" && !this.api.isAccount) {
-        this.textInputFields = {};
+        this.textInputFields = { email: "", password: "" };
+        this.textInputActive = null;
         this.textInputError = "";
         this.screen = "login";
       }
@@ -521,12 +524,19 @@ export class Game {
         }
       }
       if (key === "r") {
-        this.textInputFields = {};
+        this.textInputFields = { email: "", username: "", password: "", password2: "" };
+        this.textInputActive = "email";
         this.textInputError = "";
         this.screen = "register";
       }
     } else if (this.screen === "register") {
       if (key === "escape") this.screen = "login";
+      if (key === "tab") {
+        if (!this.textInputActive) {
+          this.textInputActive = "email";
+        }
+        // Tab cycling handled by handleTextInput when a field is active
+      }
     } else if (this.screen === "profile") {
       if (key === "escape") this.screen = "menu";
       if (key === "l" && this.api.isAccount) {
@@ -636,7 +646,7 @@ export class Game {
         if (this.api.isAccount) {
           this.screen = "profile";
         } else {
-          this.textInputFields = { email: "", password: "", username: "", password2: "" };
+          this.textInputFields = { email: "", password: "" };
           this.textInputActive = "email";
           this.textInputError = "";
           this.screen = "login";
@@ -2043,8 +2053,15 @@ export class Game {
 
     ctx.font = "14px monospace";
     ctx.fillStyle = COLORS.ui;
-    const cursor = isActive && Math.sin(performance.now() / 300) > 0 ? "_" : "";
-    ctx.fillText(displayValue + cursor, cx, y + 5);
+    ctx.textAlign = "left";
+    const textX = cx - 140;
+    ctx.fillText(displayValue, textX, y + 5);
+    if (isActive) {
+      const textW = ctx.measureText(displayValue).width;
+      ctx.fillStyle = Math.sin(performance.now() / 500) > 0 ? COLORS.ui : "transparent";
+      ctx.fillText("|", textX + textW + 1, y + 5);
+    }
+    ctx.textAlign = "center";
 
     // Register click region so handleMenuClick can activate this field
     this.menuClickRegions.push({ x: cx - 150, y: y - 15, width: 300, height: 30, id: `field-${fieldName}` });
@@ -2380,17 +2397,17 @@ export class Game {
     ];
 
     this.drawModCategory(ctx, w / 2, 120, "WEAPON MOD", weaponMods, weaponDescs, this.selectedWeaponMod, "#ff4444", "weapon", mx, my);
-    this.drawModCategory(ctx, w / 2, 260, "SHIP MOD", shipMods, shipDescs, this.selectedShipMod, "#4488ff", "ship", mx, my);
-    this.drawModCategory(ctx, w / 2, 400, "PASSIVE MOD", passiveMods, passiveDescs, this.selectedPassiveMod, "#44ff88", "passive", mx, my);
+    this.drawModCategory(ctx, w / 2, 270, "SHIP MOD", shipMods, shipDescs, this.selectedShipMod, "#4488ff", "ship", mx, my);
+    this.drawModCategory(ctx, w / 2, 420, "PASSIVE MOD", passiveMods, passiveDescs, this.selectedPassiveMod, "#44ff88", "passive", mx, my);
 
     ctx.font = "bold 16px monospace";
     ctx.fillStyle = "#ffaa00";
     ctx.textAlign = "center";
-    ctx.fillText("STEUERUNG", w / 2, 545);
+    ctx.fillText("STEUERUNG", w / 2, 565);
 
     for (let i = 0; i < 2; i++) {
       const bx = w / 2 - 230 + i * 240;
-      const by = 560;
+      const by = 580;
       const bw = 210;
       const bh = 50;
       const isSelected = i === this.selectedControlMode;
@@ -2420,8 +2437,8 @@ export class Game {
       this.menuClickRegions.push({ x: bx, y: by, width: bw, height: bh, id: regionId });
     }
 
-    this.drawMenuButton(ctx, w / 2, 645, 220, 44, "Weiter", COLORS.ui, "button-start", mx, my);
-    this.drawMenuButton(ctx, w / 2, 700, 150, 36, "Zurueck", COLORS.uiDim, "button-back", mx, my);
+    this.drawMenuButton(ctx, w / 2, 665, 220, 44, "Weiter", COLORS.ui, "button-start", mx, my);
+    this.drawMenuButton(ctx, w / 2, 720, 150, 36, "Zurueck", COLORS.uiDim, "button-back", mx, my);
   }
 
   private drawSettings(): void {
@@ -2655,11 +2672,14 @@ export class Game {
     ctx.textAlign = "center";
     ctx.fillText(title, cx, y);
 
+    const bw = 170;
+    const spacing = 180;
+    const startX = cx - (names.length * spacing - (spacing - bw)) / 2;
+
     for (let i = 0; i < names.length; i++) {
-      const bx = cx - 250 + i * 160 - 50;
+      const bx = startX + i * spacing;
       const by = y + 15;
-      const bw = 140;
-      const bh = 55;
+      const bh = 65;
       const isSelected = i === selected;
       const regionId = `mod-${categoryId}-${i}`;
       const isHovered = mx >= bx && mx <= bx + bw && my >= by && my <= by + bh;
@@ -2680,9 +2700,22 @@ export class Game {
       ctx.fillStyle = isSelected ? COLORS.ui : (isHovered ? COLORS.ui : COLORS.uiDim);
       ctx.fillText(names[i], bx + bw / 2, by + 20);
 
+      // Word-wrap description into 2 lines
       ctx.font = "11px monospace";
       ctx.fillStyle = COLORS.uiDim;
-      ctx.fillText(descs[i], bx + bw / 2, by + 40);
+      const words = descs[i].split(" ");
+      let line1 = "";
+      let line2 = "";
+      for (const word of words) {
+        const test = line1 ? `${line1} ${word}` : word;
+        if (!line2 && ctx.measureText(test).width <= bw - 14) {
+          line1 = test;
+        } else {
+          line2 = line2 ? `${line2} ${word}` : word;
+        }
+      }
+      ctx.fillText(line1, bx + bw / 2, by + 38);
+      if (line2) ctx.fillText(line2, bx + bw / 2, by + 50);
 
       this.menuClickRegions.push({ x: bx, y: by, width: bw, height: bh, id: regionId });
     }

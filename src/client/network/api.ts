@@ -28,8 +28,8 @@ export class ApiClient {
 
     const res = await fetch(`${API_BASE}${path}`, { ...options, headers });
     if (!res.ok) {
-      const body = await res.json().catch(() => ({ error: res.statusText })) as { error?: string };
-      throw new Error(body.error || res.statusText);
+      const body = await res.json().catch(() => ({})) as { error?: string };
+      throw new Error(body.error || `Serverfehler (${res.status})`);
     }
     return res.json();
   }

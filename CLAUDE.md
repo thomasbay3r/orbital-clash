@@ -56,7 +56,9 @@ public/
 - `npm run dev:client` — Start Vite dev server (client)
 - `npm run dev:server` — Start wrangler dev (Workers)
 - `npm run build` — Build client for production
-- `npm run deploy` — Deploy Workers to Cloudflare
+- `npm run deploy` — Build, deploy Workers to Cloudflare, and migrate D1 schema
+- `npm run db:migrate` — Apply D1 schema to remote database
+- `npm run deploy:smoke` — Run smoke tests against live API
 - `npm run typecheck` — Run TypeScript type checking
 - `npm test` — Run unit tests with Vitest
 - `npm run test:e2e` — Run E2E tests with Playwright (Chromium, port 4173)
@@ -255,7 +257,7 @@ Configured in `.mcp.json` (repo root). Provides live documentation at session st
 
 | Hook | Type | Effect |
 |------|------|--------|
-| Deploy after push | PostToolUse (Bash) | Auto-deploys to Cloudflare after `git push` |
+| Deploy after push | PostToolUse (Bash) | Auto-deploys to Cloudflare after `git push`, then runs smoke test |
 | JS Syntax-Check | PostToolUse (Edit/Write) | Runs `node --check` after JS file changes |
 | .env/Lock protection | PreToolUse (Edit/Write) | Blocks changes to `.env*` and `package-lock.json` |
 | Commit checklist | PreToolUse (Bash) | Warns if src/ files staged without tests, or no .md files in commit |

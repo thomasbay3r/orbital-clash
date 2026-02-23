@@ -15,6 +15,8 @@ export class InputHandler {
   constructor(canvas: HTMLCanvasElement) {
     window.addEventListener("keydown", (e) => {
       const key = e.key.toLowerCase();
+      // Prevent browser default for Tab (focus shift) and Backspace (history nav)
+      if (key === "tab") e.preventDefault();
       this.keys.add(key);
       if (this.onKeyPress) this.onKeyPress(key);
     });

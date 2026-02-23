@@ -91,8 +91,10 @@ Eine gute Aenderung enthaelt:
 
 ## 8) Deployment
 
-- `npm run deploy` deployed zu Cloudflare Workers.
-- Auto-Deploy Hook: laeuft automatisch nach jedem `git push` (via `.claude/hooks/deploy-after-push.js`).
+- `npm run deploy` baut, deployed zu Cloudflare Workers, und migriert D1 Schema.
+- `npm run db:migrate` wendet Schema auf Remote-D1 an.
+- `npm run deploy:smoke` prueft kritische API-Endpunkte gegen Live-Server.
+- Auto-Deploy Hook: laeuft automatisch nach jedem `git push`, dann Smoke-Test.
 - Immer deployen nach Aenderungen an Client oder Server.
 
 ## 9) Claude Code Automations
