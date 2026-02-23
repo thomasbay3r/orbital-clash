@@ -1304,12 +1304,12 @@ export class Renderer {
 
     // Bottom buttons
     const btnY = h - 60;
+    this.drawButton(ctx, w / 2 - 100, btnY, 180, 40, t("menu.back"), COLORS.uiDim, "button-back", hoveredId);
     if (onlineFlow) {
-      this.drawButton(ctx, w / 2 - 100, btnY, 180, 40, t("menu.multiplayer"), COLORS.ui, "button-weiter", hoveredId);
+      this.drawButton(ctx, w / 2 + 100, btnY, 180, 40, t("menu.multiplayer"), COLORS.ui, "button-weiter", hoveredId);
     } else {
-      this.drawButton(ctx, w / 2 - 100, btnY, 180, 40, t("menu.continue"), COLORS.ui, "button-weiter", hoveredId);
+      this.drawButton(ctx, w / 2 + 100, btnY, 180, 40, t("menu.continue"), COLORS.ui, "button-weiter", hoveredId);
     }
-    this.drawButton(ctx, w / 2 + 100, btnY, 180, 40, t("menu.back"), COLORS.uiDim, "button-back", hoveredId);
   }
 
   // ===== Ship Stat Icons =====
@@ -1392,10 +1392,11 @@ export class Renderer {
     const tw = 220;
     const th = 140;
 
-    // Position: right of box, or left if near right edge
-    let tx = bx + bw + 8;
-    if (tx + tw > screenW - 10) tx = bx - tw - 8;
-    const ty = by;
+    // Position: above the ship box, centered horizontally
+    let tx = bx + bw / 2 - tw / 2;
+    if (tx < 10) tx = 10;
+    if (tx + tw > screenW - 10) tx = screenW - 10 - tw;
+    const ty = by - th - 8;
 
     // Background
     ctx.fillStyle = "#0a0a2a";
