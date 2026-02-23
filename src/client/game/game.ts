@@ -14,7 +14,7 @@ import {
 } from "../../shared/game-simulation";
 import {
   SHIP_CONFIGS, COLORS, DIFFICULTY_PRESETS, DEFAULT_DIFFICULTY_INDEX,
-  DRIFT_FRICTION, BOOST_MULTIPLIER,
+  DRIFT_FRICTION, BOOST_MULTIPLIER, MUTATOR_CONFIGS,
   SKIN_CONFIGS, TRAIL_CONFIGS, KILL_EFFECT_CONFIGS, TITLE_CONFIGS, EMOTE_CONFIGS,
   DAILY_CHALLENGE_POOL, WEEKLY_CHALLENGE_POOL, ACHIEVEMENT_CONFIGS,
 } from "../../shared/constants";
@@ -2651,8 +2651,21 @@ export class Game {
       this.menuClickRegions.push({ x: bx, y: by, width: bw, height: bh, id: regionId });
     }
 
-    this.drawMenuButton(ctx, w / 2, 530, 220, 44, t("settings.start"), COLORS.ui, "button-start-game", mx, my);
-    this.drawMenuButton(ctx, w / 2, 585, 150, 36, t("settings.back"), COLORS.uiDim, "button-settings-back", mx, my);
+    // Mutator hover tooltip — show description below the grid
+    const hoveredMutRegion = this.hitTestLocal(mx, my);
+    if (hoveredMutRegion && hoveredMutRegion.startsWith("mutator-")) {
+      const mutId = hoveredMutRegion.replace("mutator-", "");
+      const desc = MUTATOR_CONFIGS[mutId]?.description;
+      if (desc) {
+        ctx.font = "12px monospace";
+        ctx.fillStyle = "#aa88ff";
+        ctx.textAlign = "center";
+        ctx.fillText(desc, w / 2, 510);
+      }
+    }
+
+    this.drawMenuButton(ctx, w / 2, 540, 220, 44, t("settings.start"), COLORS.ui, "button-start-game", mx, my);
+    this.drawMenuButton(ctx, w / 2, 595, 150, 36, t("settings.back"), COLORS.uiDim, "button-settings-back", mx, my);
   }
 
   private drawOnlineLobby(): void {
