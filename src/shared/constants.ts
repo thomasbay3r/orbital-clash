@@ -26,6 +26,10 @@ export const MODE_DURATIONS: Record<string, number> = {
   "king-of-the-asteroid": 180,
   "gravity-shift": 150,
   duel: 90,
+  "asteroid-tag": 180,
+  "survival-wave": 600, // 10 min max
+  "hot-potato": 120,
+  "capture-the-core": 240,
 };
 
 export const KOTH_WIN_SCORE = 60;
@@ -33,6 +37,31 @@ export const KOTH_ZONE_RADIUS = 120;
 export const KOTH_CAPTURE_RATE = 1; // points per second
 
 export const GRAVITY_SHIFT_INTERVAL = 15; // seconds
+
+// ===== New Mode Constants =====
+export const TAG_DPS = 5; // damage per second for "It" player
+export const POTATO_TIMER = 8; // seconds before bomb explodes
+export const CAPTURE_WIN_SCORE = 3; // captures to win
+export const CORE_DROP_COOLDOWN = 5; // seconds before dropped core can be picked up
+export const CORE_CARRIER_SPEED_MULT = 0.6; // speed reduction for core carrier
+export const CORE_CARRIER_SIZE_MULT = 1.5; // hitbox increase for core carrier
+export const WAVE_PAUSE_DURATION = 5; // seconds between waves
+export const SURVIVAL_RESPAWNS = 10; // shared lives for survival mode
+
+// ===== Mutator Configs =====
+import { MutatorConfig } from "./types";
+
+export const MUTATOR_CONFIGS: Record<string, MutatorConfig> = {
+  hypergravity: { id: "hypergravity", name: "Hypergravity", description: "Gravity Wells 3x staerker" },
+  "zero-g": { id: "zero-g", name: "Zero-G", description: "Keine Gravity Wells" },
+  "big-head": { id: "big-head", name: "Big Head", description: "Hitboxen 2x groesser" },
+  "ricochet-arena": { id: "ricochet-arena", name: "Ricochet Arena", description: "Alle Projektile bouncen" },
+  "glass-cannon": { id: "glass-cannon", name: "Glass Cannon", description: "1 HP, 5x Damage" },
+  "mystery-loadout": { id: "mystery-loadout", name: "Mystery Loadout", description: "Zufaellige Mods alle 30s" },
+  "fog-of-war": { id: "fog-of-war", name: "Fog of War", description: "Sichtweite 300px" },
+  "speed-demon": { id: "speed-demon", name: "Speed Demon", description: "Alle Schiffe 2x schneller" },
+  "friendly-fire": { id: "friendly-fire", name: "Friendly Fire", description: "Eigene Projektile treffen dich" },
+};
 
 // ===== Ship Configurations =====
 export const SHIP_CONFIGS: Record<ShipClass, ShipClassConfig> = {

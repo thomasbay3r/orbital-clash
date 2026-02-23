@@ -1,7 +1,7 @@
 import {
   GameState, PlayerState, PlayerInput, Projectile, GravityWell,
   Particle, ShipClass, ModLoadout, GameMode, MapId, Vec2, KothZone, ControlMode,
-  KillType,
+  KillType, MutatorId, Portal,
 } from "./types";
 import {
   SHIP_CONFIGS, WEAPON_CONFIGS, SPECIAL_CONFIGS,
@@ -25,20 +25,35 @@ function genId(): string {
 
 // ===== Create Initial State =====
 
-export function createGameState(mode: GameMode, mapId: MapId): GameState {
+export function createGameState(
+  mode: GameMode,
+  mapId: MapId,
+  mutators: MutatorId[] = [],
+): GameState {
   const map = MAPS[mapId];
 
-  const gravityWells: GravityWell[] = map.gravityWells.map((gw) => ({
+  let gravityWells: GravityWell[] = map.gravityWells.map((gw) => ({
     ...gw,
     isTemporary: false,
     lifetime: Infinity,
   }));
+
+  // Mutator: zero-g removes all gravity wells
+  if (mutators.includes("zero-g")) {
+    gravityWells = [];
+  }
+  // Mutator: hypergravity triples well strength
+  if (mutators.includes("hypergravity")) {
+    gravityWells = gravityWells.map((gw) => ({ ...gw, strength: gw.strength * 3 }));
+  }
 
   const asteroids = map.asteroids.map((a) => ({
     ...a,
     rotation: 0,
     rotationSpeed: (Math.random() - 0.5) * 0.5,
   }));
+
+  const portals: Portal[] = map.portals ? [...map.portals] : [];
 
   const kothZone: KothZone | null =
     mode === "king-of-the-asteroid"
@@ -58,6 +73,7 @@ export function createGameState(mode: GameMode, mapId: MapId): GameState {
     asteroids,
     pickups: [],
     particles: [],
+    portals,
     timeRemaining: MODE_DURATIONS[mode] ?? 120,
     gameMode: mode,
     mapId,
@@ -65,8 +81,32 @@ export function createGameState(mode: GameMode, mapId: MapId): GameState {
     kothScores: {},
     gameOver: false,
     winnerId: null,
+    winnerTeam: null,
     killFeed: [],
     playerStats: {},
+    // Mutators
+    mutators,
+    // Map events
+    mapEvents: [],
+    nextEventTimer: 30 + Math.random() * 30, // first event 30-60s
+    // Asteroid Tag
+    tagItPlayerId: null,
+    // Survival Wave
+    waveNumber: mode === "survival-wave" ? 1 : 0,
+    waveEnemiesRemaining: 0,
+    sharedLives: mode === "survival-wave" ? 10 : 0,
+    wavePause: false,
+    wavePauseTimer: 0,
+    // Hot Potato
+    potatoCarrierId: null,
+    potatoTimer: 0,
+    // Capture the Core
+    teams: {},
+    cores: {
+      red: { position: { x: 200, y: map.height / 2 }, carrierId: null, droppedTimer: 0, atBase: true },
+      blue: { position: { x: map.width - 200, y: map.height / 2 }, carrierId: null, droppedTimer: 0, atBase: true },
+    },
+    captureScores: { red: 0, blue: 0 },
   };
 }
 
