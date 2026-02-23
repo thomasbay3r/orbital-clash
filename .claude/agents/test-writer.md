@@ -25,8 +25,10 @@ You are a test-writing specialist for Orbital Clash. Your job is to identify mis
 | `src/client/game/input.ts` | — | E2E only (Browser API) |
 | `src/client/rendering/renderer.ts` | — | E2E only (Canvas API) |
 | `src/client/audio/audio-manager.ts` | — | E2E only (Web Audio API) |
-| `src/server/index.ts` | — | E2E only (Worker runtime) |
+| `src/server/index.ts` | — | Smoke test (`scripts/smoke-test.js`) + E2E |
 | `src/server/game-room.ts` | — | E2E only (Durable Object) |
+| `src/server/guest-names.ts` | `src/server/guest-names.test.ts` | Done (4 tests) |
+| `src/shared/progression` | `src/shared/progression.test.ts` | Done (35 tests) |
 
 ## Where new tests are needed
 
@@ -37,6 +39,19 @@ When adding new code, tests are needed for:
 3. **New ships/weapons/specials/mods** — config validation in constants.ts
 4. **Balance changes** — verify new values are in valid ranges
 5. **Bugfixes** — write failing test first, then fix
+6. **Server/API changes** (`src/server/index.ts`) — extend smoke test (`scripts/smoke-test.js`)
+
+## Cloudflare Workers + D1 testing pattern
+
+Server code (`src/server/`) runs in Cloudflare Workers with D1 (SQLite). Direct unit tests are impractical (Worker runtime). Instead:
+
+- **Smoke test** (`scripts/smoke-test.js`): Runs against live API after deploy. Tests HTTP endpoints, validates D1 tables exist, checks error responses. **Extend this when adding new API routes.**
+- **Schema validation**: `schema.sql` is applied on every deploy (`npm run db:migrate`). Tests should verify expected error codes (400, 401, 409) not just 200.
+- **When to add smoke test cases**:
+  - New API route → add route existence test (expect non-404)
+  - New D1 table → add query that touches it (proves schema applied)
+  - Changed validation → add test for expected error message
+  - Auth-gated endpoint → test returns 401/403 without token
 
 ## Existing test style
 

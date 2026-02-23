@@ -456,6 +456,32 @@
     </div>
     <div class="trigger auto">AUTO — Skill</div>
   </div>
+  <div class="arrow active-border">&#8595;</div>
+
+  <div class="flow-step active">
+    <div class="phase">Deploy</div>
+    <div class="description">
+      <strong>Deploy + Validate (Cloudflare/D1)</strong><br>
+      Build → Deploy → DB-Schema migrieren → Smoke-Test gegen Live-API. Jeder Schritt muss bestehen.
+      <div class="skill-detail hook-detail">
+        <span class="skill-badge hook-badge">Hook: deploy-after-push</span>
+        <span class="skill-how">AUTO nach <code>git push</code> — fuehrt <code>npm run deploy</code> aus (Build + Wrangler + D1 Migrate).</span>
+      </div>
+      <div class="skill-detail sub-detail">
+        <span class="skill-badge hook-badge">↳ db:migrate</span>
+        <span class="skill-how"><code>CREATE TABLE IF NOT EXISTS</code> — idempotent, kann beliebig oft laufen.</span>
+      </div>
+      <div class="skill-detail sub-detail">
+        <span class="skill-badge hook-badge">↳ deploy:smoke</span>
+        <span class="skill-how">Smoke-Test: Worker antwortet, D1-Tabellen existieren, Auth-Validierung funktioniert, Routen erreichbar.</span>
+      </div>
+      <div class="skill-detail hook-detail">
+        <span class="skill-badge agent-badge">CI: smoke Job</span>
+        <span class="skill-how">GitHub Actions: Deploy + Smoke-Test nach bestandenen Unit-/E2E-Tests (nur main-Branch).</span>
+      </div>
+    </div>
+    <div class="trigger auto">AUTO — Hook + CI</div>
+  </div>
 </div>
 
 <!-- ===== HOOKS ===== -->
@@ -476,6 +502,15 @@
       <li>Frontend-Aenderungen? → E2E-Reminder</li>
       <li>Keine .md-Datei im Commit? → Warnung</li>
       <li>Checklist-Reminder: Tests + E2E + Docs</li>
+    </ul>
+  </div>
+  <div class="card">
+    <h4>Nach jedem <code>git push</code> (Cloudflare/D1)</h4>
+    <ul>
+      <li><code>vite build</code> → <code>wrangler deploy</code></li>
+      <li><code>db:migrate</code> — D1-Schema anwenden (idempotent)</li>
+      <li><code>deploy:smoke</code> — Live-API pruefen: Worker, D1-Tabellen, Auth, Routen</li>
+      <li>Fehlschlag wird gemeldet, verhindert aber nicht den Push</li>
     </ul>
   </div>
 </div>

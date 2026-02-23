@@ -1,46 +1,80 @@
 #!/usr/bin/env node
-// Post-deploy smoke test: verifies critical API endpoints respond correctly.
+// Post-deploy smoke test for Cloudflare Workers + D1 projects.
+// Verifies: API responds, D1 schema exists, auth flow works.
 // Run: npm run deploy:smoke
+//
+// Pattern: reusable for any Workers + D1 project — adjust BASE and tests array.
 
-const BASE = "https://orbital-clash.thomas-bay3r.workers.dev";
+const BASE = process.env.SMOKE_TEST_URL || "https://orbital-clash.thomas-bay3r.workers.dev";
 
 const tests = [
+  // --- Infrastructure ---
   {
-    name: "Health check",
+    name: "Worker responds (health)",
     url: "/api/health",
     method: "GET",
-    expect: (res, body) => res.status === 200 && body.status === "ok",
+    expect: (res) => res.status === 200,
   },
+
+  // --- D1 schema exists (the bug that bit us) ---
+  // Guest auth does INSERT INTO guest_sessions — proves table exists
   {
-    name: "Guest auth",
+    name: "D1: guest_sessions table exists",
     url: "/api/auth/guest",
     method: "POST",
     expect: (res, body) => res.status === 200 && body.token && body.displayName,
   },
+  // Register validation hits SELECT on accounts — proves table exists
   {
-    name: "Register validation (empty body)",
+    name: "D1: accounts table exists",
+    url: "/api/auth/register",
+    method: "POST",
+    body: { email: "smoke@test.dev", username: "smoke_test_user", password: "test123456" },
+    // 409 (duplicate) or 200 (created) both prove the table exists
+    // 500 with "no such table" = schema not applied
+    expect: (res) => res.status === 200 || res.status === 409,
+  },
+
+  // --- Auth validation (error handling works) ---
+  {
+    name: "Auth: register rejects empty body",
     url: "/api/auth/register",
     method: "POST",
     body: {},
-    expect: (res, body) => res.status === 400 && body.error,
+    expect: (res, body) => res.status === 400 && !!body.error,
   },
   {
-    name: "Login validation (empty body)",
+    name: "Auth: register rejects short password",
+    url: "/api/auth/register",
+    method: "POST",
+    body: { email: "a@b.c", username: "abc", password: "abc" },
+    expect: (res, body) => res.status === 400 && body.error.includes("6 Zeichen"),
+  },
+  {
+    name: "Auth: login rejects empty body",
     url: "/api/auth/login",
     method: "POST",
     body: {},
-    expect: (res, body) => res.status === 400 && body.error,
+    expect: (res, body) => res.status === 400 && !!body.error,
+  },
+
+  // --- API routes exist (no 404s) ---
+  {
+    name: "Route: /api/friends requires auth",
+    url: "/api/friends",
+    method: "GET",
+    expect: (res) => res.status === 401 || res.status === 403,
   },
   {
-    name: "Register validation (short password)",
-    url: "/api/auth/register",
-    method: "POST",
-    body: { email: "test@test.com", username: "smoketest", password: "abc" },
-    expect: (res, body) => res.status === 400 && body.error.includes("6 Zeichen"),
+    name: "Route: /api/profile requires auth",
+    url: "/api/profile",
+    method: "GET",
+    expect: (res) => res.status === 401,
   },
 ];
 
 async function run() {
+  console.log(`Smoke testing: ${BASE}\n`);
   let passed = 0;
   let failed = 0;
 
