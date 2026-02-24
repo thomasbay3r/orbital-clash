@@ -2354,13 +2354,13 @@ export class Game {
     }
 
     // Keyboard shortcut hints at bottom
-    ctx.font = "11px monospace";
+    ctx.font = "13px monospace";
     ctx.textAlign = "center";
     ctx.fillStyle = "#8888aa";
     ctx.fillText(t("menu.shortcuts"), w / 2, ctx.canvas.height - 15);
 
     // Language toggle (bottom-right)
-    ctx.font = "bold 12px monospace";
+    ctx.font = "bold 14px monospace";
     ctx.textAlign = "right";
     const langX = w - 20;
     const langY = ctx.canvas.height - 15;

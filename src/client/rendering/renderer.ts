@@ -1069,11 +1069,11 @@ export class Renderer {
     this.drawButton(ctx, w / 2 + 90, btnY + 250, 160, 36, t("menu.friends"), COLORS.uiDim, "button-friends", hoveredId);
 
     // Controls hint (brighter than uiDim for readability on dark background)
-    ctx.font = "12px monospace";
+    ctx.font = "14px monospace";
     ctx.fillStyle = "#9999bb";
     ctx.textAlign = "center";
-    ctx.fillText(t("menu.controls1"), w / 2, h - 50);
-    ctx.fillText(t("menu.controls2"), w / 2, h - 32);
+    ctx.fillText(t("menu.controls1"), w / 2, h - 55);
+    ctx.fillText(t("menu.controls2"), w / 2, h - 35);
   }
 
   // ===== Game Config (Ship/Map/Mode Selection) =====
