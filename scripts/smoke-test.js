@@ -71,6 +71,13 @@ const tests = [
     method: "GET",
     expect: (res) => res.status === 401,
   },
+  {
+    name: "Route: /api/tutorial requires auth",
+    url: "/api/tutorial",
+    method: "PATCH",
+    body: { enabled: true, seen: [] },
+    expect: (res) => res.status === 401,
+  },
 ];
 
 async function run() {
