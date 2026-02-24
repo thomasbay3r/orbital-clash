@@ -18,6 +18,7 @@ import {
   DRIFT_FRICTION, BOOST_MULTIPLIER, MUTATOR_CONFIGS, XP_PER_LEVEL, MAX_LEVEL,
   SKIN_CONFIGS, TRAIL_CONFIGS, KILL_EFFECT_CONFIGS, TITLE_CONFIGS, EMOTE_CONFIGS,
   DAILY_CHALLENGE_POOL, WEEKLY_CHALLENGE_POOL, ACHIEVEMENT_CONFIGS,
+  TUTORIAL_SCREENS,
 } from "../../shared/constants";
 import type { TutorialScreenId } from "../../shared/constants";
 import { ChallengeProgress } from "../../shared/types";
@@ -404,6 +405,12 @@ export class Game {
         const hovered2 = this.renderer.hitTest(mx, my);
         this.renderer.drawGameConfig(this.selectedShip, this.selectedMap, this.selectedMode, hovered2, mx, my, this.onlineFlow);
         this.drawMenuOverlay(mx, my);
+        // Tutorial overlay
+        if (this.shouldShowTutorial("game-config")) {
+          this.tutorialActive = "game-config";
+          const ctx = this.canvas.getContext("2d")!;
+          this.drawTutorialOverlay(ctx, this.canvas.width, this.canvas.height, t("tutorial.overlay.gameConfig"));
+        }
         break;
       }
       case "mod-select":
@@ -479,6 +486,32 @@ export class Game {
     if (this.chatOpen) {
       this.handleChatInput(key);
       return;
+    }
+
+    // Tutorial dismiss handling
+    if (this.tutorialActive) {
+      const config = TUTORIAL_SCREENS.find((s) => s.id === this.tutorialActive);
+      if (config?.type === "overlay") {
+        if (key === "enter") {
+          this.markTutorialSeen(this.tutorialActive);
+          return;
+        }
+        if (key === "t") {
+          this.disableTutorial();
+          return;
+        }
+        return; // Block all other keys during overlay
+      }
+      if (config?.type === "banner") {
+        if (key === "enter") {
+          this.markTutorialSeen(this.tutorialActive);
+          return;
+        }
+        if (key === "t" && !this.chatOpen) {
+          this.disableTutorial();
+          return;
+        }
+      }
     }
 
     if (this.screen === "menu") {
@@ -1974,6 +2007,23 @@ export class Game {
     if (this.emoteWheelOpen) {
       this.drawEmoteWheel();
     }
+
+    // Emote wheel tutorial banner
+    if (this.emoteWheelOpen && this.shouldShowTutorial("emote-wheel")) {
+      this.tutorialActive = "emote-wheel";
+      const emoteCtx = this.canvas.getContext("2d")!;
+      this.drawTutorialBanner(emoteCtx, this.canvas.width, t("tutorial.banner.emoteWheel"));
+    }
+
+    // First-gameplay tutorial overlay
+    if (!this.firstGameStarted && this.shouldShowTutorial("first-gameplay")) {
+      this.firstGameStarted = true;
+      this.tutorialActive = "first-gameplay";
+    }
+    if (this.tutorialActive === "first-gameplay") {
+      const fgCtx = this.canvas.getContext("2d")!;
+      this.drawTutorialOverlay(fgCtx, this.canvas.width, this.canvas.height, t("tutorial.overlay.firstGameplay"));
+    }
   }
 
   private sendEmote(index: number): void {
@@ -2537,6 +2587,12 @@ export class Game {
     const btnY = this.sessionGamesPlayed > 1 ? xpY + 60 : xpY + 50;
     this.drawMenuButton(ctx, w / 2 - 120, btnY, 180, 40, t("postgame.playAgain"), COLORS.ui, "btn-play-again", mx, my);
     this.drawMenuButton(ctx, w / 2 + 120, btnY, 180, 40, t("postgame.toMenu"), COLORS.uiDim, "btn-to-menu", mx, my);
+
+    // Tutorial banner
+    if (this.shouldShowTutorial("scoreboard")) {
+      this.tutorialActive = "scoreboard";
+      this.drawTutorialBanner(ctx, w, t("tutorial.banner.scoreboard"));
+    }
   }
 
   private drawSessionLeaderboard(ctx: CanvasRenderingContext2D, w: number, h: number, mx: number, my: number): void {
@@ -2737,6 +2793,12 @@ export class Game {
         ctx.fillText(this.textInputMessage, w / 2, h / 2 + 35);
       }
     }
+
+    // Tutorial banner
+    if (this.shouldShowTutorial("friends")) {
+      this.tutorialActive = "friends";
+      this.drawTutorialBanner(ctx, w, t("tutorial.banner.friends"));
+    }
   }
 
   private drawLogin(): void {
@@ -2894,6 +2956,12 @@ export class Game {
     this.drawMenuButton(ctx, btnX, 410, 120, 38, t("profile.backBtn"), COLORS.uiDim, "btn-profile-back", mx, my);
     if (this.api.isAccount) {
       this.drawMenuButton(ctx, w / 2, 460, 140, 36, t("profile.logout"), COLORS.gravityWell, "btn-logout", mx, my);
+    }
+
+    // Tutorial banner
+    if (this.shouldShowTutorial("profile")) {
+      this.tutorialActive = "profile";
+      this.drawTutorialBanner(ctx, w, t("tutorial.banner.profile"));
     }
   }
 
@@ -3074,6 +3142,12 @@ export class Game {
     ctx.fillText(hints.join("  |  "), w / 2, h - 50);
 
     this.drawMenuButton(ctx, w / 2, h - 25, 160, 30, t("party.back"), COLORS.uiDim, "btn-party-leave", mx, my);
+
+    // Tutorial banner
+    if (this.shouldShowTutorial("party-lobby")) {
+      this.tutorialActive = "party-lobby";
+      this.drawTutorialBanner(ctx, w, t("tutorial.banner.partyLobby"));
+    }
   }
 
   private drawPartySessionStats(ctx: CanvasRenderingContext2D, w: number, _h: number, party: PartyStateSnapshot): void {
@@ -3235,6 +3309,54 @@ export class Game {
     }
 
     this.drawMenuButton(ctx, w / 2 + 120, h - 55, 160, 40, t("tournament.back"), COLORS.uiDim, "btn-tournament-back", mx, my);
+  }
+
+  private drawTutorialBanner(ctx: CanvasRenderingContext2D, w: number, text: string): void {
+    const bannerH = 44;
+    ctx.fillStyle = "rgba(10, 14, 39, 0.92)";
+    ctx.fillRect(0, 0, w, bannerH);
+    ctx.strokeStyle = COLORS.uiDim;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(0, bannerH);
+    ctx.lineTo(w, bannerH);
+    ctx.stroke();
+    ctx.font = "14px monospace";
+    ctx.fillStyle = COLORS.ui;
+    ctx.textAlign = "center";
+    ctx.fillText(text, w / 2, 18);
+    ctx.font = "13px monospace";
+    ctx.fillStyle = COLORS.uiDim;
+    ctx.fillText(`${t("tutorial.ok")}    ${t("tutorial.dismiss")}`, w / 2, 36);
+  }
+
+  private drawTutorialOverlay(ctx: CanvasRenderingContext2D, w: number, h: number, text: string): void {
+    ctx.fillStyle = "rgba(10, 14, 39, 0.85)";
+    ctx.fillRect(0, 0, w, h);
+    ctx.font = "bold 24px monospace";
+    ctx.fillStyle = "#ffaa00";
+    ctx.textAlign = "center";
+    ctx.fillText("TUTORIAL", w / 2, h / 2 - 40);
+    ctx.font = "16px monospace";
+    ctx.fillStyle = COLORS.ui;
+    const words = text.split(" ");
+    const maxWidth = w - 100;
+    let line = "";
+    let y = h / 2;
+    for (const word of words) {
+      const testLine = line + (line ? " " : "") + word;
+      if (ctx.measureText(testLine).width > maxWidth && line) {
+        ctx.fillText(line, w / 2, y);
+        line = word;
+        y += 24;
+      } else {
+        line = testLine;
+      }
+    }
+    if (line) ctx.fillText(line, w / 2, y);
+    ctx.font = "bold 14px monospace";
+    ctx.fillStyle = COLORS.uiDim;
+    ctx.fillText(`${t("tutorial.ok")}    ${t("tutorial.dismiss")}`, w / 2, h / 2 + 80);
   }
 
   private drawInputField(
@@ -3428,6 +3550,12 @@ export class Game {
 
     // Navigation button
     this.drawMenuButton(ctx, w / 2, h - 35, 200, 34, t("challenges.back"), COLORS.uiDim, "btn-challenges-back", mx, my);
+
+    // Tutorial banner
+    if (this.shouldShowTutorial("challenges")) {
+      this.tutorialActive = "challenges";
+      this.drawTutorialBanner(ctx, w, t("tutorial.banner.challenges"));
+    }
   }
 
   private drawCosmetics(): void {
@@ -3559,6 +3687,12 @@ export class Game {
 
     // Navigation button
     this.drawMenuButton(ctx, w / 2, h - 35, 140, 34, t("cosmetics.back"), COLORS.uiDim, "btn-cosmetics-back", mx, my);
+
+    // Tutorial banner
+    if (this.shouldShowTutorial("cosmetics")) {
+      this.tutorialActive = "cosmetics";
+      this.drawTutorialBanner(ctx, w, t("tutorial.banner.cosmetics"));
+    }
   }
 
   // ===== Kill-Cam & Highlights =====
@@ -4033,6 +4167,12 @@ export class Game {
 
     this.drawMenuButton(ctx, w / 2, 665, 220, 44, t("mods.continue"), COLORS.ui, "button-start", mx, my);
     this.drawMenuButton(ctx, w / 2, 720, 150, 36, t("mods.back"), COLORS.uiDim, "button-back", mx, my);
+
+    // Tutorial overlay
+    if (this.shouldShowTutorial("mod-select")) {
+      this.tutorialActive = "mod-select";
+      this.drawTutorialOverlay(ctx, w, h, t("tutorial.overlay.modSelect"));
+    }
   }
 
   private drawSettings(): void {
@@ -4213,6 +4353,12 @@ export class Game {
     this.drawMenuButton(ctx, w / 2 - 130, 565, 220, 44, t("settings.start"), COLORS.ui, "button-start-game", mx, my);
     this.drawMenuButton(ctx, w / 2 + 130, 565, 220, 44, t("tournament.title"), "#aa88ff", "button-start-tournament", mx, my);
     this.drawMenuButton(ctx, w / 2, 625, 150, 36, t("settings.back"), COLORS.uiDim, "button-settings-back", mx, my);
+
+    // Tutorial overlay
+    if (this.shouldShowTutorial("settings")) {
+      this.tutorialActive = "settings";
+      this.drawTutorialOverlay(ctx, w, h, t("tutorial.overlay.settings"));
+    }
   }
 
   private drawOnlineLobby(): void {
