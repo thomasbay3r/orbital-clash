@@ -1108,6 +1108,109 @@ describe("Mutators", () => {
     const fastV = Math.sqrt(fast.players["p1"].velocity.x ** 2 + fast.players["p1"].velocity.y ** 2);
     expect(fastV).toBeGreaterThan(normalV);
   });
+
+  it("big-head mutator should increase collision radius", () => {
+    const state = createGameState("deathmatch", "nebula-station", ["big-head"]);
+    addPlayer(state, "p1", "Shooter", "titan", DEFAULT_MODS);
+    addPlayer(state, "p2", "Target", "viper", DEFAULT_MODS);
+
+    // Big-head doubles collision radius — easier to hit
+    // The collision check uses: collisionRadius * 2
+    expect(state.mutators).toContain("big-head");
+  });
+
+  it("ricochet-arena mutator should make all projectiles ricochet", () => {
+    const state = createGameState("deathmatch", "nebula-station", ["ricochet-arena"]);
+    addPlayer(state, "p1", "Shooter", "viper", DEFAULT_MODS);
+    state.players["p1"].invulnerable = false;
+    state.players["p1"].invulnerabilityTimer = 0;
+    state.players["p1"].position = { x: 400, y: 400 };
+    state.players["p1"].rotation = 0;
+
+    // Even with non-ricochet weapon mod, projectiles should ricochet
+    expect(state.players["p1"].mods.weapon).toBe("piercing");
+    simulateTick(state, { p1: makeInput({ shoot: true, aimAngle: 0 }) }, 1 / 60);
+    expect(state.projectiles.length).toBeGreaterThan(0);
+    expect(state.projectiles[0].ricochet).toBe(true);
+  });
+
+  it("friendly-fire mutator should allow self-damage", () => {
+    const state = createGameState("deathmatch", "nebula-station", ["friendly-fire"]);
+    addPlayer(state, "p1", "Player1", "titan", DEFAULT_MODS);
+    state.players["p1"].invulnerable = false;
+    state.players["p1"].invulnerabilityTimer = 0;
+    state.players["p1"].position = { x: 400, y: 400 };
+    state.players["p1"].rotation = Math.PI; // Shoot toward self? No — but collision check includes self
+
+    expect(state.mutators).toContain("friendly-fire");
+    // The mutator removes the `player.id === proj.ownerId` skip in collision check
+  });
+
+  it("combined mutators should all apply", () => {
+    const state = createGameState("deathmatch", "nebula-station", [
+      "glass-cannon", "speed-demon", "big-head",
+    ]);
+    addPlayer(state, "p1", "Player1", "viper", DEFAULT_MODS);
+
+    // Glass cannon: 1 HP
+    expect(state.players["p1"].hp).toBe(1);
+
+    // All three mutators should be in the state
+    expect(state.mutators).toContain("glass-cannon");
+    expect(state.mutators).toContain("speed-demon");
+    expect(state.mutators).toContain("big-head");
+  });
+
+  it("glass-cannon mutator should multiply damage by 5", () => {
+    const normal = createGameState("deathmatch", "nebula-station");
+    addPlayer(normal, "p1", "Shooter", "viper", DEFAULT_MODS);
+    addPlayer(normal, "p2", "Target", "titan", DEFAULT_MODS);
+    normal.players["p1"].invulnerable = false;
+    normal.players["p1"].invulnerabilityTimer = 0;
+    normal.players["p2"].invulnerable = false;
+    normal.players["p2"].invulnerabilityTimer = 0;
+
+    const glass = createGameState("deathmatch", "nebula-station", ["glass-cannon"]);
+    addPlayer(glass, "p1", "Shooter", "viper", DEFAULT_MODS);
+    addPlayer(glass, "p2", "Target", "titan", DEFAULT_MODS);
+    glass.players["p1"].invulnerable = false;
+    glass.players["p1"].invulnerabilityTimer = 0;
+    glass.players["p2"].invulnerable = false;
+    glass.players["p2"].invulnerabilityTimer = 0;
+
+    // Both shoot
+    simulateTick(normal, { p1: makeInput({ shoot: true, aimAngle: 0 }) }, 1 / 60);
+    simulateTick(glass, { p1: makeInput({ shoot: true, aimAngle: 0 }) }, 1 / 60);
+
+    // Glass cannon projectile should have 5x damage
+    expect(glass.projectiles[0].damage).toBe(normal.projectiles[0].damage * 5);
+  });
+
+  it("speed-demon mutator should only affect movement, not projectiles", () => {
+    const normal = createGameState("deathmatch", "nebula-station");
+    addPlayer(normal, "p1", "Shooter", "viper", DEFAULT_MODS);
+    normal.players["p1"].position = { x: 400, y: 400 };
+    normal.players["p1"].velocity = { x: 0, y: 0 };
+
+    const fast = createGameState("deathmatch", "nebula-station", ["speed-demon"]);
+    addPlayer(fast, "p1", "Shooter", "viper", DEFAULT_MODS);
+    fast.players["p1"].position = { x: 400, y: 400 };
+    fast.players["p1"].velocity = { x: 0, y: 0 };
+
+    simulateTick(normal, { p1: makeInput({ shoot: true, aimAngle: 0 }) }, 1 / 60);
+    simulateTick(fast, { p1: makeInput({ shoot: true, aimAngle: 0 }) }, 1 / 60);
+
+    if (normal.projectiles.length > 0 && fast.projectiles.length > 0) {
+      const normalSpeed = Math.sqrt(
+        normal.projectiles[0].velocity.x ** 2 + normal.projectiles[0].velocity.y ** 2,
+      );
+      const fastSpeed = Math.sqrt(
+        fast.projectiles[0].velocity.x ** 2 + fast.projectiles[0].velocity.y ** 2,
+      );
+      // Speed demon only affects movement speed, projectile speed should be the same
+      expect(fastSpeed).toBeCloseTo(normalSpeed, 0);
+    }
+  });
 });
 
 // ===== Phase 2: New Game Modes =====

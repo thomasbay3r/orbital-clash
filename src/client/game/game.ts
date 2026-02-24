@@ -608,11 +608,9 @@ export class Game {
       // Toggle session/match view
       if (key === "s" && this.sessionGamesPlayed > 1) {
         this.showSessionStats = true;
-      }
-      if (key === "m") {
+      } else if (key === "m" && this.showSessionStats) {
         this.showSessionStats = false;
-      }
-      if (key === "enter" || key === "n") {
+      } else if (key === "enter" || key === "n") {
         // Nochmal
         this.showSessionStats = false;
         if (this.isOnline) {
@@ -620,8 +618,7 @@ export class Game {
         } else {
           this.startLocalGame();
         }
-      }
-      if (key === "escape" || key === "m") {
+      } else if (key === "escape") {
         this.returnToMenu();
       }
     } else if (this.screen === "friends") {
@@ -1652,22 +1649,22 @@ export class Game {
     } else {
       const botShip = SHIP_OPTIONS[Math.floor(Math.random() * 4)];
       addPlayer(this.gameState, p1.id, p1.name, botShip, mods);
-      const bot = new Bot(p1.id, preset);
-      this.bots = [bot];
     }
 
     if (p2.id === this.localPlayerId) {
       addPlayer(this.gameState, p2.id, p2.name, shipClass, mods, controlMode);
-      this.bots = [];
     } else {
       const botShip = SHIP_OPTIONS[Math.floor(Math.random() * 4)];
       addPlayer(this.gameState, p2.id, p2.name, botShip, mods);
-      if (p1.id !== this.localPlayerId) {
-        // Both are bots
-        this.bots.push(new Bot(p2.id, preset));
-      } else {
-        this.bots = [new Bot(p2.id, preset)];
-      }
+    }
+
+    // Build bots list from scratch — avoids overwrite bugs
+    this.bots = [];
+    if (p1.id !== this.localPlayerId) {
+      this.bots.push(new Bot(p1.id, preset));
+    }
+    if (p2.id !== this.localPlayerId) {
+      this.bots.push(new Bot(p2.id, preset));
     }
 
     this.initAudioTracking();
@@ -1721,6 +1718,8 @@ export class Game {
       if (this.screen === "party-lobby") {
         this.partyStatus = "Verbindung getrennt";
         this.partyWs = null;
+        this.partyState = null;
+        this.partyReady = false;
       }
     };
 
@@ -2021,6 +2020,9 @@ export class Game {
       // Streak milestones (kills without dying)
       if (this.killStreak === 5) this.showAnnouncement(t("announce.unstoppable"));
       else if (this.killStreak === 10) this.showAnnouncement(t("announce.godlike"));
+
+      // Track impressive kills for highlight reel
+      this.trackHighlightKill(event);
     }
     if (event.victimId === this.localPlayerId) {
       this.killStreak = 0;
@@ -2210,6 +2212,27 @@ export class Game {
         break;
       case "post-game":
         this.postGameData = msg.data;
+        // Apply XP locally (online path — data arrives from server)
+        if (this.postGameData && this.currentUser) {
+          this.currentUser.xp += this.postGameData.xpGained;
+          this.currentUser.level = Math.min(MAX_LEVEL, Math.floor(this.currentUser.xp / XP_PER_LEVEL) + 1);
+          try { localStorage.setItem("local_xp", String(this.currentUser.xp)); } catch {}
+        }
+        // Auto-transition to post-game screen if still on playing
+        if (this.screen === "playing") {
+          this.accumulateSessionStats();
+          this.updateChallengeProgress();
+          this.checkAchievements();
+          const topHighlights = this.highlightKills.sort((a, b) => b.score - a.score).slice(0, 3);
+          if (topHighlights.length > 0) {
+            this.showingHighlights = true;
+            this.highlightPhaseTimer = 0;
+            this.highlightKills = topHighlights;
+          } else {
+            this.showingHighlights = false;
+          }
+          this.screen = "post-game";
+        }
         break;
       case "rematch":
         // Could show vote count, for now just auto-transition
@@ -2317,6 +2340,8 @@ export class Game {
   // ===== New Screen Drawings =====
 
   private drawMenuOverlay(_mx: number, _my: number): void {
+    // Clear click regions at start of each frame to prevent unbounded growth
+    this.menuClickRegions = [];
     const ctx = this.canvas.getContext("2d")!;
     const w = ctx.canvas.width;
 
@@ -2486,7 +2511,7 @@ export class Game {
 
     entries.forEach((s, i) => {
       const y = 150 + i * 28;
-      const isLocal = s.name === this.playerName;
+      const isLocal = s === this.sessionStats[this.localPlayerId];
       ctx.font = "12px monospace";
       ctx.fillStyle = isLocal ? "#ffaa00" : "#cccccc";
       ctx.fillText(`${i + 1}`, sColX[0], y);
@@ -3653,11 +3678,11 @@ export class Game {
   }
 
   private drawHighlightReel(ctx: CanvasRenderingContext2D, w: number, h: number): void {
-    const t = this.highlightPhaseTimer;
+    const timer = this.highlightPhaseTimer;
 
     // Intro (0-1s): "HIGHLIGHTS" title
-    if (t < 1) {
-      const alpha = Math.min(1, t * 2);
+    if (timer < 1) {
+      const alpha = Math.min(1, timer * 2);
       ctx.globalAlpha = alpha;
       ctx.font = "bold 48px monospace";
       ctx.textAlign = "center";
@@ -3668,7 +3693,7 @@ export class Game {
     }
 
     // Show highlight cards (2s each)
-    const cardTime = t - 1;
+    const cardTime = timer - 1;
     const cardIndex = Math.floor(cardTime / 2);
     const cardProgress = (cardTime % 2) / 2;
 
