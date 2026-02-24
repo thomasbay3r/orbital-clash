@@ -624,6 +624,13 @@ export class Game {
       if (key === "o") {
         this.rouletteEnabled = !this.rouletteEnabled;
       }
+      if (key === "h") {
+        this.tutorialEnabled = !this.tutorialEnabled;
+        this.saveTutorialState();
+        if (this.api.isAccount) {
+          this.api.saveTutorialState(this.tutorialEnabled, [...this.tutorialSeen]).catch(() => {});
+        }
+      }
       if (key === "escape") {
         this.screen = "mod-select";
       }
@@ -1074,6 +1081,13 @@ export class Game {
         this.toggleMutator(mutId);
       }
       if (hit === "btn-roulette-toggle") this.rouletteEnabled = !this.rouletteEnabled;
+      if (hit === "button-tutorial-toggle") {
+        this.tutorialEnabled = !this.tutorialEnabled;
+        this.saveTutorialState();
+        if (this.api.isAccount) {
+          this.api.saveTutorialState(this.tutorialEnabled, [...this.tutorialSeen]).catch(() => {});
+        }
+      }
       if (hit === "button-start-game") {
         if (this.rouletteEnabled) {
           this.startMutatorRoulette();
@@ -4462,9 +4476,18 @@ export class Game {
     ctx.fillText(`[O] Roulette: ${this.rouletteEnabled ? "AN" : "AUS"}`, w / 2, 530);
     this.menuClickRegions.push({ x: w / 2 - 80, y: 518, width: 160, height: 20, id: rouletteRegion });
 
-    this.drawMenuButton(ctx, w / 2 - 130, 565, 220, 44, t("settings.start"), COLORS.ui, "button-start-game", mx, my);
-    this.drawMenuButton(ctx, w / 2 + 130, 565, 220, 44, t("tournament.title"), "#aa88ff", "button-start-tournament", mx, my);
-    this.drawMenuButton(ctx, w / 2, 625, 150, 36, t("settings.back"), COLORS.uiDim, "button-settings-back", mx, my);
+    // Tutorial toggle
+    const tutorialRegion = "button-tutorial-toggle";
+    const tutorialHovered = this.hitTestLocal(mx, my) === tutorialRegion;
+    ctx.font = "bold 13px monospace";
+    ctx.fillStyle = this.tutorialEnabled ? "#44ff88" : (tutorialHovered ? COLORS.ui : COLORS.uiDim);
+    ctx.textAlign = "center";
+    ctx.fillText(`[H] Tutorial: ${this.tutorialEnabled ? "AN" : "AUS"}`, w / 2, 550);
+    this.menuClickRegions.push({ x: w / 2 - 80, y: 538, width: 160, height: 20, id: tutorialRegion });
+
+    this.drawMenuButton(ctx, w / 2 - 130, 585, 220, 44, t("settings.start"), COLORS.ui, "button-start-game", mx, my);
+    this.drawMenuButton(ctx, w / 2 + 130, 585, 220, 44, t("tournament.title"), "#aa88ff", "button-start-tournament", mx, my);
+    this.drawMenuButton(ctx, w / 2, 645, 150, 36, t("settings.back"), COLORS.uiDim, "button-settings-back", mx, my);
 
     // Tutorial overlay
     if (this.shouldShowTutorial("settings")) {
