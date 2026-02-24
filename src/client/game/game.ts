@@ -247,10 +247,11 @@ export class Game {
 
     // Auto-init guest if not logged in (non-blocking for local play)
     if (this.api.isLoggedIn) {
-      this.api.getMe().then((user) => {
+      this.api.getMe().then((user: any) => {
         this.currentUser = user;
         this.playerName = user.displayName;
         this.restoreLocalXp();
+        this.syncTutorialFromServer(user);
       }).catch(() => {});
     }
 
@@ -352,6 +353,16 @@ export class Game {
     if (this.api.isAccount) {
       this.api.saveTutorialState(this.tutorialEnabled, [...this.tutorialSeen]).catch(() => {});
     }
+  }
+
+  private syncTutorialFromServer(data: { tutorial_enabled?: number; tutorial_seen?: string }): void {
+    if (data.tutorial_enabled === undefined) return;
+    const serverSeen = new Set<TutorialScreenId>(
+      JSON.parse(data.tutorial_seen || "[]"),
+    );
+    for (const id of serverSeen) this.tutorialSeen.add(id);
+    if (!data.tutorial_enabled) this.tutorialEnabled = false;
+    this.saveTutorialState();
   }
 
   private shouldShowTutorial(id: TutorialScreenId): boolean {
@@ -1303,6 +1314,8 @@ export class Game {
       this.playerName = this.currentUser.displayName;
       this.textInputError = "";
       this.screen = "menu";
+      // Sync tutorial state from server
+      this.api.getMe().then((data: any) => this.syncTutorialFromServer(data)).catch(() => {});
     } catch (e: any) {
       this.textInputError = e.message || t("error.loginFailed");
     }

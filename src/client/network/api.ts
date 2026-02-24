@@ -217,7 +217,10 @@ export class ApiClient {
 
   // ===== Tutorial =====
 
-  async saveTutorialState(_enabled: boolean, _seen: string[]): Promise<void> {
-    // TODO: implement in Task 7
+  async saveTutorialState(enabled: boolean, seen: string[]): Promise<void> {
+    await this.fetch("/api/tutorial", {
+      method: "PATCH",
+      body: JSON.stringify({ enabled, seen }),
+    });
   }
 }

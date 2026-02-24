@@ -126,6 +126,9 @@ async function handleApi(url: URL, request: Request, env: Env): Promise<Response
     if (path === "/matchmaking/leave" && method === "POST") return handleMatchmakingLeave(request, env);
     if (path === "/matchmaking/status" && method === "GET") return handleMatchmakingStatus(request, env);
 
+    // ===== Tutorial =====
+    if (path === "/tutorial" && method === "PATCH") return handleUpdateTutorial(request, env);
+
     // ===== Match Results =====
     if (path === "/match/complete" && method === "POST") return handleMatchComplete(request, env);
 
@@ -176,6 +179,18 @@ async function handleGuestAuth(request: Request, env: Env): Promise<Response> {
 async function handleGetMe(request: Request, env: Env): Promise<Response> {
   const user = await authenticateUser(request, env);
   if (!user) return Response.json({ error: "Unauthorized" }, { status: 401 });
+
+  if (user.type === "account") {
+    const account = await env.DB.prepare(
+      "SELECT tutorial_enabled, tutorial_seen FROM accounts WHERE id = ?",
+    ).bind(user.id).first();
+    return Response.json({
+      ...user,
+      tutorial_enabled: account?.tutorial_enabled ?? 1,
+      tutorial_seen: account?.tutorial_seen ?? "[]",
+    });
+  }
+
   return Response.json(user);
 }
 
@@ -707,6 +722,30 @@ async function tryMatchPlayers(env: Env): Promise<boolean> {
   return true;
 }
 
+// ===== Tutorial =====
+
+async function handleUpdateTutorial(request: Request, env: Env): Promise<Response> {
+  const user = await authenticateUser(request, env);
+  if (!user || user.type !== "account") return Response.json({ error: "Unauthorized" }, { status: 401 });
+
+  const body = await request.json() as { enabled?: boolean; seen?: string[] };
+  const enabled = body.enabled !== undefined ? (body.enabled ? 1 : 0) : undefined;
+  const seen = body.seen !== undefined ? JSON.stringify(body.seen) : undefined;
+
+  if (enabled !== undefined && seen !== undefined) {
+    await env.DB.prepare("UPDATE accounts SET tutorial_enabled = ?, tutorial_seen = ? WHERE id = ?")
+      .bind(enabled, seen, user.id).run();
+  } else if (enabled !== undefined) {
+    await env.DB.prepare("UPDATE accounts SET tutorial_enabled = ? WHERE id = ?")
+      .bind(enabled, user.id).run();
+  } else if (seen !== undefined) {
+    await env.DB.prepare("UPDATE accounts SET tutorial_seen = ? WHERE id = ?")
+      .bind(seen, user.id).run();
+  }
+
+  return Response.json({ ok: true });
+}
+
 // ===== Match Results =====
 
 async function handleMatchComplete(request: Request, env: Env): Promise<Response> {
@@ -873,7 +912,7 @@ async function generateToken(userId: string, type: "account" | "guest"): Promise
 function corsHeaders(): HeadersInit {
   return {
     "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Methods": "GET, POST, DELETE, OPTIONS",
+    "Access-Control-Allow-Methods": "GET, POST, PATCH, DELETE, OPTIONS",
     "Access-Control-Allow-Headers": "Content-Type, Authorization",
   };
 }

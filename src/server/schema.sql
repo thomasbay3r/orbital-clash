@@ -20,7 +20,9 @@ CREATE TABLE IF NOT EXISTS accounts (
   equipped_kill_effect TEXT DEFAULT 'default',
   equipped_title TEXT DEFAULT '',
   equipped_badge TEXT DEFAULT '',
-  equipped_emotes TEXT DEFAULT '["gg","wow","nochmal","sorry"]'
+  equipped_emotes TEXT DEFAULT '["gg","wow","nochmal","sorry"]',
+  tutorial_enabled INTEGER DEFAULT 1,
+  tutorial_seen TEXT DEFAULT '[]'
 );
 
 CREATE TABLE IF NOT EXISTS guest_sessions (
