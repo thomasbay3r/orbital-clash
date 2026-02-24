@@ -19,6 +19,7 @@ import {
   SKIN_CONFIGS, TRAIL_CONFIGS, KILL_EFFECT_CONFIGS, TITLE_CONFIGS, EMOTE_CONFIGS,
   DAILY_CHALLENGE_POOL, WEEKLY_CHALLENGE_POOL, ACHIEVEMENT_CONFIGS,
 } from "../../shared/constants";
+import type { TutorialScreenId } from "../../shared/constants";
 import { ChallengeProgress } from "../../shared/types";
 import {
   add, scale, normalize, vecFromAngle, angleDiff, clamp,
@@ -29,7 +30,8 @@ import { t, getLang, setLang } from "../../shared/i18n";
 
 type Screen = "menu" | "game-config" | "mod-select" | "settings" | "playing" | "online-lobby"
   | "friends" | "login" | "register" | "profile" | "post-game" | "matchmaking"
-  | "challenges" | "cosmetics" | "mutator-roulette" | "party-lobby" | "tournament-bracket";
+  | "challenges" | "cosmetics" | "mutator-roulette" | "party-lobby" | "tournament-bracket"
+  | "help";
 
 const SHIP_OPTIONS: ShipClass[] = ["viper", "titan", "specter", "nova"];
 const MAP_OPTIONS: MapId[] = [
@@ -214,6 +216,13 @@ export class Game {
   private tournamentCurrentMatch = -1;
   private tournamentChampion: string | null = null;
 
+  // Tutorial state
+  private tutorialEnabled = true;
+  private tutorialSeen = new Set<TutorialScreenId>();
+  private tutorialActive: TutorialScreenId | null = null;
+  private tutorialResetFeedback = 0;
+  private firstGameStarted = false;
+
   constructor(private canvas: HTMLCanvasElement) {
     this.renderer = new Renderer(canvas);
     this.input = new InputHandler(canvas);
@@ -227,6 +236,8 @@ export class Game {
     this.connection.onMessage((msg: ServerMessage) => {
       this.handleServerMessage(msg);
     });
+
+    this.loadTutorialState();
   }
 
   start(): void {
@@ -271,6 +282,17 @@ export class Game {
       emoteWheelOpen: this.emoteWheelOpen,
       killStreak: this.killStreak,
       slowmoActive: this.slowmoActive,
+      tutorialEnabled: this.tutorialEnabled,
+      tutorialSeen: [...this.tutorialSeen],
+      tutorialActive: this.tutorialActive,
+      tutorialResetFeedback: this.tutorialResetFeedback,
+      firstGameStarted: this.firstGameStarted,
+      // Methods exposed for future task wiring (suppress noUnusedLocals)
+      _tutorialHelpers: {
+        markSeen: this.markTutorialSeen.bind(this),
+        disable: this.disableTutorial.bind(this),
+        shouldShow: this.shouldShowTutorial.bind(this),
+      },
     };
   }
 
@@ -295,6 +317,44 @@ export class Game {
     this.running = false;
     if (this.heartbeatInterval) clearInterval(this.heartbeatInterval);
     if (this.inviteCheckInterval) clearInterval(this.inviteCheckInterval);
+  }
+
+  // ===== Tutorial State =====
+
+  private loadTutorialState(): void {
+    try {
+      const enabled = localStorage.getItem("tutorialEnabled");
+      if (enabled !== null) this.tutorialEnabled = enabled === "true";
+      const seen = localStorage.getItem("tutorialSeen");
+      if (seen) this.tutorialSeen = new Set(JSON.parse(seen));
+    } catch { /* ignore corrupt data */ }
+  }
+
+  private saveTutorialState(): void {
+    localStorage.setItem("tutorialEnabled", String(this.tutorialEnabled));
+    localStorage.setItem("tutorialSeen", JSON.stringify([...this.tutorialSeen]));
+  }
+
+  private markTutorialSeen(id: TutorialScreenId): void {
+    this.tutorialSeen.add(id);
+    this.tutorialActive = null;
+    this.saveTutorialState();
+    if (this.api.isAccount) {
+      this.api.saveTutorialState(this.tutorialEnabled, [...this.tutorialSeen]).catch(() => {});
+    }
+  }
+
+  private disableTutorial(): void {
+    this.tutorialEnabled = false;
+    this.tutorialActive = null;
+    this.saveTutorialState();
+    if (this.api.isAccount) {
+      this.api.saveTutorialState(this.tutorialEnabled, [...this.tutorialSeen]).catch(() => {});
+    }
+  }
+
+  private shouldShowTutorial(id: TutorialScreenId): boolean {
+    return this.tutorialEnabled && !this.tutorialSeen.has(id);
   }
 
   private loop(time: number): void {

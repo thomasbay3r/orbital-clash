@@ -214,4 +214,10 @@ export class ApiClient {
       body: JSON.stringify(payload),
     });
   }
+
+  // ===== Tutorial =====
+
+  async saveTutorialState(_enabled: boolean, _seen: string[]): Promise<void> {
+    // TODO: implement in Task 7
+  }
 }
