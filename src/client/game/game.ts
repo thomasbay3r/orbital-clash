@@ -2356,7 +2356,7 @@ export class Game {
     // Keyboard shortcut hints at bottom
     ctx.font = "11px monospace";
     ctx.textAlign = "center";
-    ctx.fillStyle = "#444444";
+    ctx.fillStyle = "#8888aa";
     ctx.fillText(t("menu.shortcuts"), w / 2, ctx.canvas.height - 15);
 
     // Language toggle (bottom-right)
@@ -2366,11 +2366,11 @@ export class Game {
     const langY = ctx.canvas.height - 15;
     const currentLang = getLang();
     // Highlight current language
-    const deColor = currentLang === "de" ? "#ffaa00" : "#555555";
-    const enColor = currentLang === "en" ? "#ffaa00" : "#555555";
+    const deColor = currentLang === "de" ? "#ffaa00" : "#8888aa";
+    const enColor = currentLang === "en" ? "#ffaa00" : "#8888aa";
     ctx.fillStyle = deColor;
     ctx.fillText("DE", langX - 30, langY);
-    ctx.fillStyle = "#555555";
+    ctx.fillStyle = "#8888aa";
     ctx.fillText("|", langX - 18, langY);
     ctx.fillStyle = enColor;
     ctx.fillText("EN", langX, langY);

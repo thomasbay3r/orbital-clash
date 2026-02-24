@@ -1068,9 +1068,9 @@ export class Renderer {
     }
     this.drawButton(ctx, w / 2 + 90, btnY + 250, 160, 36, t("menu.friends"), COLORS.uiDim, "button-friends", hoveredId);
 
-    // Controls hint
+    // Controls hint (brighter than uiDim for readability on dark background)
     ctx.font = "12px monospace";
-    ctx.fillStyle = COLORS.uiDim;
+    ctx.fillStyle = "#9999bb";
     ctx.textAlign = "center";
     ctx.fillText(t("menu.controls1"), w / 2, h - 50);
     ctx.fillText(t("menu.controls2"), w / 2, h - 32);
