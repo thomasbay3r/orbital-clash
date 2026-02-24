@@ -198,7 +198,8 @@ export type GameMode = "deathmatch" | "king-of-the-asteroid" | "gravity-shift" |
 // ===== Mutators =====
 
 export type MutatorId = "hypergravity" | "zero-g" | "big-head" | "ricochet-arena"
-  | "glass-cannon" | "mystery-loadout" | "fog-of-war" | "speed-demon" | "friendly-fire";
+  | "glass-cannon" | "mystery-loadout" | "fog-of-war" | "speed-demon" | "friendly-fire"
+  | "mirror-match";
 
 export interface MutatorConfig {
   id: MutatorId;

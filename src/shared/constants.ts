@@ -61,6 +61,7 @@ export const MUTATOR_CONFIGS: Record<string, MutatorConfig> = {
   "fog-of-war": { id: "fog-of-war", name: "Fog of War", description: "Sichtweite 300px" },
   "speed-demon": { id: "speed-demon", name: "Speed Demon", description: "Alle Schiffe 2x schneller" },
   "friendly-fire": { id: "friendly-fire", name: "Friendly Fire", description: "Eigene Projektile treffen dich" },
+  "mirror-match": { id: "mirror-match", name: "Mirror Match", description: "Alle spielen mit gleichem Loadout" },
 };
 
 // ===== Ship Configurations =====

@@ -10,6 +10,10 @@
       {
         "name": "GAME_ROOM",
         "class_name": "GameRoom"
+      },
+      {
+        "name": "PARTY_ROOM",
+        "class_name": "PartyRoom"
       }
     ]
   },
@@ -28,6 +32,10 @@
     {
       "tag": "v1",
       "new_sqlite_classes": ["GameRoom"]
+    },
+    {
+      "tag": "v2",
+      "new_sqlite_classes": ["PartyRoom"]
     }
   ],
 

@@ -5,10 +5,11 @@ import { Bot } from "./bot";
 import { Connection } from "../network/connection";
 import { ApiClient } from "../network/api";
 import {
-  GameState, ShipClass, GameMode, MapId, ModLoadout, MutatorId,
+  GameState, ShipClass, GameMode, MapId, ModLoadout, MutatorId, KillType,
   PlayerInput, ServerMessage, ControlMode, PlayerState, Vec2,
   AuthUser, KillEvent, PostGameData, ChatMessage, FriendInfo, FriendRequest, Invite,
 } from "../../shared/types";
+import type { PartyServerMessage, PartyStateSnapshot } from "../../server/party-room";
 import {
   createGameState, addPlayer, simulateTick,
 } from "../../shared/game-simulation";
@@ -28,7 +29,7 @@ import { t, getLang, setLang } from "../../shared/i18n";
 
 type Screen = "menu" | "game-config" | "mod-select" | "settings" | "playing" | "online-lobby"
   | "friends" | "login" | "register" | "profile" | "post-game" | "matchmaking"
-  | "challenges" | "cosmetics";
+  | "challenges" | "cosmetics" | "mutator-roulette" | "party-lobby" | "tournament-bracket";
 
 const SHIP_OPTIONS: ShipClass[] = ["viper", "titan", "specter", "nova"];
 const MAP_OPTIONS: MapId[] = [
@@ -42,6 +43,7 @@ const MODE_OPTIONS: GameMode[] = [
 const MUTATOR_OPTIONS: MutatorId[] = [
   "hypergravity", "zero-g", "big-head", "ricochet-arena",
   "glass-cannon", "mystery-loadout", "fog-of-war", "speed-demon", "friendly-fire",
+  "mirror-match",
 ];
 const CONTROL_MODE_OPTIONS: ControlMode[] = ["absolute", "ship-relative"];
 const getControlModeNames = () => [t("controls.standard"), t("controls.relative")];
@@ -157,6 +159,60 @@ export class Game {
   // Slowmo state (client-side only, last kill effect)
   private slowmoActive = false;
   private slowmoTimer = 0;
+
+  // Mutator roulette state
+  private rouletteEnabled = false;
+  private rouletteTimer = 0;
+  private rouletteSelected: MutatorId[] = [];
+  private rouletteHighlight = 0;
+  private rouletteLockedCount = 0;
+
+  // Kill-cam ring buffer & state
+  private positionHistory: Array<Record<string, { x: number; y: number; rot: number; alive: boolean }>> = [];
+  private killCamData: {
+    frames: Array<Record<string, { x: number; y: number; rot: number; alive: boolean }>>;
+    killerId: string;
+    killerName: string;
+    killType: KillType;
+  } | null = null;
+  private killCamTimer = 0;
+  private prevLocalAlive = true;
+
+  // Post-game highlight tracking
+  private highlightKills: Array<{
+    killerName: string; victimName: string; killType: KillType;
+    score: number; label: string;
+  }> = [];
+  private highlightPhaseTimer = 0;
+  private showingHighlights = false;
+
+  // Session leaderboard (accumulated across rematches)
+  private sessionStats: Record<string, {
+    name: string; kills: number; deaths: number; wins: number;
+    damageDealt: number; shotsFired: number; shotsHit: number;
+    gamesPlayed: number;
+  }> = {};
+  private sessionGamesPlayed = 0;
+  private showSessionStats = false;
+
+  // Party system state
+  private partyWs: WebSocket | null = null;
+  private partyState: PartyStateSnapshot | null = null;
+  private partyCodeInput = "";
+  private partyStatus = "";
+  private partyReady = false;
+  private partyCopiedTimer = 0;
+  private partyShowSession = false;
+  private partyChatOpen = false;
+  private partyChatInput = "";
+  private partyChatMessages: ChatMessage[] = [];
+
+  // Tournament state
+  private tournamentActive = false;
+  private tournamentBracket: Array<{ player1: string; player2: string | null; winner: string | null; round: number }> = [];
+  private tournamentPlayers: Array<{ id: string; name: string }> = [];
+  private tournamentCurrentMatch = -1;
+  private tournamentChampion: string | null = null;
 
   constructor(private canvas: HTMLCanvasElement) {
     this.renderer = new Renderer(canvas);
@@ -327,6 +383,17 @@ export class Game {
       case "cosmetics":
         this.drawCosmetics();
         break;
+      case "mutator-roulette":
+        this.rouletteTimer += dt;
+        this.drawMutatorRoulette(dt);
+        break;
+      case "party-lobby":
+        if (this.partyCopiedTimer > 0) this.partyCopiedTimer -= dt;
+        this.drawPartyLobby();
+        break;
+      case "tournament-bracket":
+        this.drawTournamentBracket();
+        break;
     }
 
     requestAnimationFrame((t) => this.loop(t));
@@ -381,6 +448,14 @@ export class Game {
       if (key === " ") {
         this.startQuickPlay();
       }
+      if (key === "n") {
+        this.createParty();
+      }
+      if (key === "j") {
+        this.partyCodeInput = "";
+        this.partyStatus = "";
+        this.screen = "party-lobby";
+      }
     } else if (this.screen === "game-config") {
       // Game config: ship/map/mode selection
       if (key === "1") this.selectedShip = 0;
@@ -431,7 +506,14 @@ export class Game {
       }
     } else if (this.screen === "settings") {
       if (key === "enter") {
-        this.startLocalGame();
+        if (this.rouletteEnabled) {
+          this.startMutatorRoulette();
+        } else {
+          this.startLocalGame();
+        }
+      }
+      if (key === "o") {
+        this.rouletteEnabled = !this.rouletteEnabled;
       }
       if (key === "escape") {
         this.screen = "mod-select";
@@ -465,6 +547,13 @@ export class Game {
       if (key === "f") this.toggleMutator("fog-of-war");
       if (key === "d") this.toggleMutator("speed-demon");
       if (key === "x") this.toggleMutator("friendly-fire");
+      if (key === "y") this.toggleMutator("mystery-loadout");
+      if (key === "i") this.toggleMutator("mirror-match");
+    } else if (this.screen === "mutator-roulette") {
+      if (key === "enter" || key === "escape") {
+        this.selectedMutators = [...this.rouletteSelected];
+        this.startLocalGame();
+      }
     } else if (this.screen === "online-lobby") {
       if (key === "escape") {
         if (this.connectionCheckInterval) {
@@ -509,8 +598,23 @@ export class Game {
         this.transitionToPostGame();
       }
     } else if (this.screen === "post-game") {
+      // Skip highlights phase
+      if (this.showingHighlights) {
+        if (key === "enter" || key === "escape" || key === " ") {
+          this.showingHighlights = false;
+        }
+        return;
+      }
+      // Toggle session/match view
+      if (key === "s" && this.sessionGamesPlayed > 1) {
+        this.showSessionStats = true;
+      }
+      if (key === "m") {
+        this.showSessionStats = false;
+      }
       if (key === "enter" || key === "n") {
         // Nochmal
+        this.showSessionStats = false;
         if (this.isOnline) {
           this.connection.send({ type: "rematch-vote" });
         } else {
@@ -584,6 +688,121 @@ export class Game {
       if (key === "escape") {
         this.cancelMatchmaking();
         this.screen = "menu";
+      }
+    } else if (this.screen === "tournament-bracket") {
+      if (key === "escape") {
+        this.tournamentActive = false;
+        this.screen = "settings";
+      }
+      if (key === "enter") {
+        if (this.tournamentChampion) {
+          // Tournament over — return to settings
+          this.tournamentActive = false;
+          this.screen = "settings";
+        } else {
+          // Find next unplayed match
+          const nextIdx = this.tournamentBracket.findIndex((m) => m.winner === null && m.player2 !== null);
+          if (nextIdx >= 0) {
+            this.startTournamentMatch(nextIdx);
+          }
+        }
+      }
+    } else if (this.screen === "party-lobby") {
+      // Not connected yet — entering party code
+      if (!this.partyState && !this.partyWs) {
+        if (key === "escape") {
+          this.screen = "menu";
+          return;
+        }
+        if (key === "backspace") {
+          this.partyCodeInput = this.partyCodeInput.slice(0, -1);
+          return;
+        }
+        if (key === "enter" && this.partyCodeInput.length > 0) {
+          this.connectToParty(this.partyCodeInput);
+          return;
+        }
+        if (key === "n") {
+          this.createParty();
+          return;
+        }
+        if (key.length === 1 && this.partyCodeInput.length < 12) {
+          this.partyCodeInput += key;
+          return;
+        }
+        return;
+      }
+
+      if (this.partyChatOpen) {
+        if (key === "escape") {
+          this.partyChatOpen = false;
+          return;
+        }
+        if (key === "enter") {
+          if (this.partyChatInput.trim()) {
+            this.sendPartyMessage({ type: "chat", text: this.partyChatInput.trim() });
+            this.partyChatInput = "";
+          }
+          this.partyChatOpen = false;
+          return;
+        }
+        if (key === "backspace") {
+          this.partyChatInput = this.partyChatInput.slice(0, -1);
+          return;
+        }
+        if (key.length === 1) {
+          this.partyChatInput += key;
+          return;
+        }
+        return;
+      }
+      if (key === "escape") {
+        this.disconnectParty();
+        this.screen = "menu";
+      }
+      if (key === "r") {
+        this.partyReady = !this.partyReady;
+        this.sendPartyMessage({ type: "ready", ready: this.partyReady });
+      }
+      if (key === "t") {
+        this.partyChatOpen = true;
+        this.partyChatInput = "";
+      }
+      if (key === "s") {
+        this.partyShowSession = !this.partyShowSession;
+      }
+      // Leader: Enter = start game
+      if (key === "enter" && this.partyState) {
+        const myId = this.currentUser?.id ?? "";
+        if (myId === this.partyState.leaderId) {
+          this.sendPartyMessage({ type: "start-game" });
+        }
+      }
+      // Leader: Q/E = change mode, W/S = change map
+      if (this.partyState) {
+        const myId = this.currentUser?.id ?? "";
+        if (myId === this.partyState.leaderId) {
+          if (key === "q") {
+            const modeIdx = MODE_OPTIONS.indexOf(this.partyState.selectedMode);
+            const newIdx = (modeIdx - 1 + MODE_OPTIONS.length) % MODE_OPTIONS.length;
+            this.sendPartyMessage({ type: "settings", mode: MODE_OPTIONS[newIdx] });
+          }
+          if (key === "e") {
+            const modeIdx = MODE_OPTIONS.indexOf(this.partyState.selectedMode);
+            const newIdx = (modeIdx + 1) % MODE_OPTIONS.length;
+            this.sendPartyMessage({ type: "settings", mode: MODE_OPTIONS[newIdx] });
+          }
+          if (key === "w") {
+            const mapIdx = MAP_OPTIONS.indexOf(this.partyState.selectedMap);
+            const newIdx = (mapIdx + 1) % MAP_OPTIONS.length;
+            this.sendPartyMessage({ type: "settings", map: MAP_OPTIONS[newIdx] });
+          }
+          if (key === "arrowdown") {
+            const mapIdx = MAP_OPTIONS.indexOf(this.partyState.selectedMap);
+            const newIdx = (mapIdx - 1 + MAP_OPTIONS.length) % MAP_OPTIONS.length;
+            this.sendPartyMessage({ type: "settings", map: MAP_OPTIONS[newIdx] });
+          }
+        }
       }
     }
   }
@@ -669,6 +888,12 @@ export class Game {
         this.screen = "game-config";
       }
       if (hit === "button-quickplay") this.startQuickPlay();
+      if (hit === "button-party-create") this.createParty();
+      if (hit === "button-party-join") {
+        this.partyCodeInput = "";
+        this.partyStatus = "";
+        this.screen = "party-lobby";
+      }
       if (hit === "button-account") {
         if (this.api.isAccount) {
           this.screen = "profile";
@@ -733,7 +958,15 @@ export class Game {
         const mutId = hit.slice(8) as MutatorId;
         this.toggleMutator(mutId);
       }
-      if (hit === "button-start-game") this.startLocalGame();
+      if (hit === "btn-roulette-toggle") this.rouletteEnabled = !this.rouletteEnabled;
+      if (hit === "button-start-game") {
+        if (this.rouletteEnabled) {
+          this.startMutatorRoulette();
+        } else {
+          this.startLocalGame();
+        }
+      }
+      if (hit === "button-start-tournament") this.startTournament();
       if (hit === "button-settings-back") this.screen = "mod-select";
     } else if (this.screen === "online-lobby") {
       const hit = this.hitTestLocal(mx, my);
@@ -760,6 +993,7 @@ export class Game {
       const hit = this.hitTestLocal(mx, my);
       if (!hit) return;
       if (hit === "btn-play-again") {
+        this.showSessionStats = false;
         if (this.isOnline) {
           this.connection.send({ type: "rematch-vote" });
         } else {
@@ -813,6 +1047,24 @@ export class Game {
       const hit = this.hitTestLocal(mx, my);
       if (!hit) return;
       if (hit === "btn-matchmaking-cancel") { this.cancelMatchmaking(); this.screen = "menu"; }
+    } else if (this.screen === "party-lobby") {
+      const hit = this.hitTestLocal(mx, my);
+      if (!hit) return;
+      if (hit === "btn-party-leave") {
+        this.disconnectParty();
+        this.screen = "menu";
+      }
+    } else if (this.screen === "tournament-bracket") {
+      const hit = this.hitTestLocal(mx, my);
+      if (!hit) return;
+      if (hit === "btn-tournament-next") {
+        const nextIdx = this.tournamentBracket.findIndex((m) => m.winner === null && m.player2 !== null);
+        if (nextIdx >= 0) this.startTournamentMatch(nextIdx);
+      }
+      if (hit === "btn-tournament-back") {
+        this.tournamentActive = false;
+        this.screen = "settings";
+      }
     } else if (this.screen === "playing" && this.isOnline && this.activeRoomCode) {
       const w = window.innerWidth;
       if (mx >= w - 160 && mx <= w - 10 && my >= 42 && my <= 68) {
@@ -1083,6 +1335,7 @@ export class Game {
     // Track challenge progress and achievements before generating post-game data
     this.updateChallengeProgress();
     this.checkAchievements();
+    this.accumulateSessionStats();
 
     if (this.isOnline) {
       // Post-game data comes from server via handleServerMessage
@@ -1103,7 +1356,30 @@ export class Game {
       try { localStorage.setItem("local_xp", String(this.currentUser.xp)); } catch {}
     }
 
-    this.screen = "post-game";
+    // Tournament: advance bracket instead of normal post-game
+    if (this.tournamentActive && this.gameState) {
+      const winnerId = this.gameState.winnerId;
+      const winnerPlayer = winnerId ? this.gameState.players[winnerId] : null;
+      const winnerName = winnerPlayer?.name ?? "";
+      this.gameState = null;
+      this.bots = [];
+      this.advanceTournament(winnerName);
+      return;
+    }
+
+    // Show highlight reel if there are impressive kills, otherwise go straight to post-game
+    const topHighlights = this.highlightKills
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 3);
+    if (topHighlights.length > 0) {
+      this.showingHighlights = true;
+      this.highlightPhaseTimer = 0;
+      this.highlightKills = topHighlights;
+      this.screen = "post-game";
+    } else {
+      this.showingHighlights = false;
+      this.screen = "post-game";
+    }
   }
 
   private generateLocalPostGame(): PostGameData {
@@ -1151,6 +1427,29 @@ export class Game {
     };
   }
 
+  private accumulateSessionStats(): void {
+    if (!this.gameState) return;
+    this.sessionGamesPlayed++;
+
+    for (const p of Object.values(this.gameState.players)) {
+      const stats = this.gameState.playerStats[p.id];
+      if (!this.sessionStats[p.id]) {
+        this.sessionStats[p.id] = {
+          name: p.name, kills: 0, deaths: 0, wins: 0,
+          damageDealt: 0, shotsFired: 0, shotsHit: 0, gamesPlayed: 0,
+        };
+      }
+      const s = this.sessionStats[p.id];
+      s.kills += p.eliminations;
+      s.deaths += p.deaths;
+      s.damageDealt += stats?.damageDealt ?? 0;
+      s.shotsFired += stats?.shotsFired ?? 0;
+      s.shotsHit += stats?.shotsHit ?? 0;
+      s.gamesPlayed++;
+      if (this.gameState.winnerId === p.id) s.wins++;
+    }
+  }
+
   private returnToMenu(): void {
     if (this.isOnline) {
       this.connection.disconnect();
@@ -1175,6 +1474,10 @@ export class Game {
     this.emoteCooldown = 0;
     this.slowmoActive = false;
     this.slowmoTimer = 0;
+    // Reset session leaderboard
+    this.sessionStats = {};
+    this.sessionGamesPlayed = 0;
+    this.showSessionStats = false;
   }
 
   // ===== Local Game =====
@@ -1196,10 +1499,11 @@ export class Game {
     this.bots = [];
     const availableShips = SHIP_OPTIONS.filter((s) => s !== shipClass);
 
+    const isMirror = this.selectedMutators.includes("mirror-match");
     for (let i = 0; i < botCount; i++) {
       const botId = `bot-${i}`;
-      const botShip = availableShips[i % availableShips.length];
-      const botMods: ModLoadout = {
+      const botShip = isMirror ? shipClass : availableShips[i % availableShips.length];
+      const botMods: ModLoadout = isMirror ? { ...mods } : {
         weapon: (["piercing", "ricochet", "gravity-sync", "rapid-fire"] as const)[Math.floor(Math.random() * 4)],
         ship: (["afterburner", "hull-plating", "drift-master", "gravity-anchor"] as const)[Math.floor(Math.random() * 4)],
         passive: (["scavenger", "overcharge", "ghost-trail", "radar"] as const)[Math.floor(Math.random() * 4)],
@@ -1215,8 +1519,262 @@ export class Game {
     this.comboCounter = 0;
     this.killStreak = 0;
     this.chatMessages = [];
+    this.positionHistory = [];
+    this.killCamData = null;
+    this.killCamTimer = 0;
+    this.prevLocalAlive = true;
+    this.highlightKills = [];
+    this.highlightPhaseTimer = 0;
+    this.showingHighlights = false;
     this.screen = "playing";
     this.isOnline = false;
+  }
+
+  // ===== Tournament =====
+
+  private startTournament(): void {
+    // Gather players: local player + bots
+    this.tournamentPlayers = [
+      { id: this.localPlayerId, name: this.playerName },
+    ];
+    for (let i = 0; i < this.selectedBotCount; i++) {
+      this.tournamentPlayers.push({ id: `bot-${i}`, name: BOT_NAMES[i % BOT_NAMES.length] });
+    }
+    // Need at least 2 players
+    if (this.tournamentPlayers.length < 2) return;
+
+    // Shuffle for random seeding
+    for (let i = this.tournamentPlayers.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [this.tournamentPlayers[i], this.tournamentPlayers[j]] = [this.tournamentPlayers[j], this.tournamentPlayers[i]];
+    }
+
+    // Build bracket: pair players
+    this.tournamentBracket = [];
+    let round = 1;
+    const players = [...this.tournamentPlayers];
+
+    // First round: pair up
+    for (let i = 0; i < players.length; i += 2) {
+      if (i + 1 < players.length) {
+        this.tournamentBracket.push({
+          player1: players[i].name,
+          player2: players[i + 1].name,
+          winner: null,
+          round,
+        });
+      } else {
+        // Bye — auto-advance
+        this.tournamentBracket.push({
+          player1: players[i].name,
+          player2: null,
+          winner: players[i].name,
+          round,
+        });
+      }
+    }
+
+    this.tournamentCurrentMatch = -1;
+    this.tournamentChampion = null;
+    this.tournamentActive = true;
+    this.screen = "tournament-bracket";
+  }
+
+  private advanceTournament(winnerName: string): void {
+    // Record winner for current match
+    if (this.tournamentCurrentMatch >= 0 && this.tournamentCurrentMatch < this.tournamentBracket.length) {
+      this.tournamentBracket[this.tournamentCurrentMatch].winner = winnerName;
+    }
+
+    // Find winners of current round
+    const currentRound = this.tournamentBracket.length > 0
+      ? Math.max(...this.tournamentBracket.map((m) => m.round))
+      : 0;
+    const roundMatches = this.tournamentBracket.filter((m) => m.round === currentRound);
+    const allDecided = roundMatches.every((m) => m.winner !== null);
+
+    if (allDecided) {
+      const winners = roundMatches.map((m) => m.winner!);
+      if (winners.length === 1) {
+        // Tournament is over!
+        this.tournamentChampion = winners[0];
+        this.tournamentCurrentMatch = -1;
+      } else {
+        // Create next round
+        const nextRound = currentRound + 1;
+        for (let i = 0; i < winners.length; i += 2) {
+          if (i + 1 < winners.length) {
+            this.tournamentBracket.push({
+              player1: winners[i],
+              player2: winners[i + 1],
+              winner: null,
+              round: nextRound,
+            });
+          } else {
+            this.tournamentBracket.push({
+              player1: winners[i],
+              player2: null,
+              winner: winners[i],
+              round: nextRound,
+            });
+          }
+        }
+      }
+    }
+
+    this.screen = "tournament-bracket";
+  }
+
+  private startTournamentMatch(matchIdx: number): void {
+    const match = this.tournamentBracket[matchIdx];
+    if (!match || match.winner !== null || !match.player2) return;
+
+    this.tournamentCurrentMatch = matchIdx;
+
+    // Find player IDs
+    const p1 = this.tournamentPlayers.find((p) => p.name === match.player1);
+    const p2 = this.tournamentPlayers.find((p) => p.name === match.player2);
+    if (!p1 || !p2) return;
+
+    // Set up a duel game
+    const mode: GameMode = "duel";
+    const mapId = MAP_OPTIONS[this.selectedMap];
+    const mods = this.getMods();
+    const shipClass = SHIP_OPTIONS[this.selectedShip];
+    const controlMode = CONTROL_MODE_OPTIONS[this.selectedControlMode];
+    const preset = DIFFICULTY_PRESETS[this.selectedDifficulty];
+
+    this.gameState = createGameState(mode, mapId, this.selectedMutators);
+
+    // Add players — local player uses their settings, bots use random
+    if (p1.id === this.localPlayerId) {
+      addPlayer(this.gameState, p1.id, p1.name, shipClass, mods, controlMode);
+    } else {
+      const botShip = SHIP_OPTIONS[Math.floor(Math.random() * 4)];
+      addPlayer(this.gameState, p1.id, p1.name, botShip, mods);
+      const bot = new Bot(p1.id, preset);
+      this.bots = [bot];
+    }
+
+    if (p2.id === this.localPlayerId) {
+      addPlayer(this.gameState, p2.id, p2.name, shipClass, mods, controlMode);
+      this.bots = [];
+    } else {
+      const botShip = SHIP_OPTIONS[Math.floor(Math.random() * 4)];
+      addPlayer(this.gameState, p2.id, p2.name, botShip, mods);
+      if (p1.id !== this.localPlayerId) {
+        // Both are bots
+        this.bots.push(new Bot(p2.id, preset));
+      } else {
+        this.bots = [new Bot(p2.id, preset)];
+      }
+    }
+
+    this.initAudioTracking();
+    this.killFeed = [];
+    this.killFeedTimers = [];
+    this.lastKillFeedIndex = 0;
+    this.comboCounter = 0;
+    this.killStreak = 0;
+    this.positionHistory = [];
+    this.killCamData = null;
+    this.killCamTimer = 0;
+    this.prevLocalAlive = true;
+    this.highlightKills = [];
+    this.highlightPhaseTimer = 0;
+    this.showingHighlights = false;
+    this.screen = "playing";
+    this.isOnline = false;
+  }
+
+  // ===== Party System =====
+
+  private async createParty(): Promise<void> {
+    try {
+      const res = await fetch("/api/party/create", { method: "POST" });
+      const data = await res.json() as { partyId: string };
+      this.connectToParty(data.partyId);
+    } catch {
+      this.partyStatus = "Fehler beim Erstellen";
+    }
+  }
+
+  private connectToParty(partyId: string): void {
+    const protocol = location.protocol === "https:" ? "wss:" : "ws:";
+    const ws = new WebSocket(`${protocol}//${location.host}/ws/party/${partyId}`);
+    this.partyWs = ws;
+    this.partyStatus = "Verbinde...";
+
+    ws.onopen = () => {
+      const userId = this.currentUser?.id ?? `guest-${crypto.randomUUID().slice(0, 6)}`;
+      const displayName = this.playerName;
+      const level = this.currentUser?.level ?? 1;
+      ws.send(JSON.stringify({ type: "join", userId, displayName, level }));
+    };
+
+    ws.onmessage = (e) => {
+      const msg = JSON.parse(e.data) as PartyServerMessage;
+      this.handlePartyMessage(msg);
+    };
+
+    ws.onclose = () => {
+      if (this.screen === "party-lobby") {
+        this.partyStatus = "Verbindung getrennt";
+        this.partyWs = null;
+      }
+    };
+
+    ws.onerror = () => {
+      this.partyStatus = "Verbindungsfehler";
+    };
+  }
+
+  private handlePartyMessage(msg: PartyServerMessage): void {
+    switch (msg.type) {
+      case "party-state":
+        this.partyState = msg.state;
+        this.partyStatus = "";
+        if (this.screen !== "party-lobby" && this.screen !== "playing") {
+          this.screen = "party-lobby";
+        }
+        break;
+      case "chat":
+        this.partyChatMessages.push(msg.message);
+        if (this.partyChatMessages.length > 50) this.partyChatMessages.shift();
+        break;
+      case "game-starting":
+        // Join the game room that the party leader created
+        this.partyCodeInput = "";
+        this.onlineFlow = true;
+        this.joinRoom(msg.roomId);
+        break;
+      case "kicked":
+        this.disconnectParty();
+        this.partyStatus = t("party.kicked");
+        this.screen = "menu";
+        break;
+      case "error":
+        this.partyStatus = msg.message;
+        break;
+    }
+  }
+
+  private disconnectParty(): void {
+    if (this.partyWs) {
+      this.partyWs.send(JSON.stringify({ type: "leave" }));
+      this.partyWs.close();
+      this.partyWs = null;
+    }
+    this.partyState = null;
+    this.partyReady = false;
+    this.partyChatMessages = [];
+    this.partyShowSession = false;
+  }
+
+  private sendPartyMessage(msg: Record<string, unknown>): void {
+    if (this.partyWs?.readyState === WebSocket.OPEN) {
+      this.partyWs.send(JSON.stringify(msg));
+    }
   }
 
   // ===== Online Lobby =====
@@ -1315,9 +1873,24 @@ export class Game {
       // Process new kill events from simulation
       this.processLocalKillFeed();
 
+      // Record position history ring buffer (for kill-cam)
+      this.recordPositionFrame();
+
+      // Detect local player death → trigger kill-cam
+      this.detectLocalPlayerDeath();
+
       this.processAudioEvents();
       const extras = { slowmo: this.slowmoActive, emotes: this.activeEmotes };
       this.renderer.render(this.gameState, this.localPlayerId, dt, undefined, 0, extras);
+    }
+
+    // Kill-cam overlay (during respawn invulnerability)
+    if (this.killCamData && this.killCamTimer > 0) {
+      this.killCamTimer -= dt;
+      this.drawKillCamOverlay();
+      if (this.killCamTimer <= 0) {
+        this.killCamData = null;
+      }
     }
 
     // Draw kill feed overlay
@@ -1797,6 +2370,24 @@ export class Game {
     ctx.fillStyle = COLORS.background;
     ctx.fillRect(0, 0, w, h);
 
+    // Show highlight reel phase before scoreboard
+    if (this.showingHighlights) {
+      this.highlightPhaseTimer += 1 / 60; // approximate dt
+      this.drawHighlightReel(ctx, w, h);
+      // Auto-advance after 2s per highlight + 1s intro
+      const totalDuration = 1 + this.highlightKills.length * 2;
+      if (this.highlightPhaseTimer >= totalDuration) {
+        this.showingHighlights = false;
+      }
+      return;
+    }
+
+    // Show session leaderboard or match result
+    if (this.showSessionStats && this.sessionGamesPlayed > 1) {
+      this.drawSessionLeaderboard(ctx, w, h, mx, my);
+      return;
+    }
+
     ctx.font = "bold 36px monospace";
     ctx.textAlign = "center";
     ctx.fillStyle = "#ffaa00";
@@ -1827,7 +2418,7 @@ export class Game {
     const headers = [t("postgame.headers.rank"), t("postgame.headers.name"), t("postgame.headers.class"), t("postgame.headers.kills"), t("postgame.headers.deaths"), t("postgame.headers.damage"), t("postgame.headers.accuracy")];
     const colX = [w / 2 - 340, w / 2 - 300, w / 2 - 160, w / 2 - 40, w / 2 + 40, w / 2 + 130, w / 2 + 260];
     ctx.textAlign = "left";
-    headers.forEach((h, i) => ctx.fillText(h, colX[i], 140));
+    headers.forEach((hdr, i) => ctx.fillText(hdr, colX[i], 140));
 
     result.players.forEach((p, i) => {
       const y = 170 + i * 28;
@@ -1850,9 +2441,116 @@ export class Game {
     ctx.fillStyle = "#44ff88";
     ctx.fillText(`+${this.postGameData.xpGained} XP`, w / 2, xpY);
 
+    // Session tab hint (if there are session stats from previous games)
+    if (this.sessionGamesPlayed > 1) {
+      ctx.font = "12px monospace";
+      ctx.fillStyle = COLORS.uiDim;
+      ctx.fillText(t("postgame.sessionTab") + "  |  " + t("postgame.sessionGames", { n: String(this.sessionGamesPlayed) }), w / 2, xpY + 25);
+    }
+
     // Buttons
-    this.drawMenuButton(ctx, w / 2 - 120, xpY + 50, 180, 40, t("postgame.playAgain"), COLORS.ui, "btn-play-again", mx, my);
-    this.drawMenuButton(ctx, w / 2 + 120, xpY + 50, 180, 40, t("postgame.toMenu"), COLORS.uiDim, "btn-to-menu", mx, my);
+    const btnY = this.sessionGamesPlayed > 1 ? xpY + 60 : xpY + 50;
+    this.drawMenuButton(ctx, w / 2 - 120, btnY, 180, 40, t("postgame.playAgain"), COLORS.ui, "btn-play-again", mx, my);
+    this.drawMenuButton(ctx, w / 2 + 120, btnY, 180, 40, t("postgame.toMenu"), COLORS.uiDim, "btn-to-menu", mx, my);
+  }
+
+  private drawSessionLeaderboard(ctx: CanvasRenderingContext2D, w: number, h: number, mx: number, my: number): void {
+    ctx.font = "bold 36px monospace";
+    ctx.textAlign = "center";
+    ctx.fillStyle = "#aa88ff";
+    ctx.fillText(t("postgame.sessionTitle"), w / 2, 60);
+
+    ctx.font = "14px monospace";
+    ctx.fillStyle = COLORS.uiDim;
+    ctx.fillText(t("postgame.sessionGames", { n: String(this.sessionGamesPlayed) }), w / 2, 85);
+
+    // Session scoreboard — sort by kills desc
+    const entries = Object.values(this.sessionStats).sort((a, b) => b.kills - a.kills);
+
+    const sHeaders = [
+      "#",
+      t("postgame.sessionHeaders.name"),
+      t("postgame.sessionHeaders.kills"),
+      t("postgame.sessionHeaders.deaths"),
+      t("postgame.sessionHeaders.wins"),
+      t("postgame.sessionHeaders.dmg"),
+      t("postgame.sessionHeaders.acc"),
+      t("postgame.sessionHeaders.games"),
+    ];
+    const sColX = [w / 2 - 340, w / 2 - 300, w / 2 - 120, w / 2 - 40, w / 2 + 30, w / 2 + 100, w / 2 + 190, w / 2 + 270];
+
+    ctx.font = "bold 14px monospace";
+    ctx.fillStyle = COLORS.ui;
+    ctx.textAlign = "left";
+    sHeaders.forEach((hdr, i) => ctx.fillText(hdr, sColX[i], 120));
+
+    entries.forEach((s, i) => {
+      const y = 150 + i * 28;
+      const isLocal = s.name === this.playerName;
+      ctx.font = "12px monospace";
+      ctx.fillStyle = isLocal ? "#ffaa00" : "#cccccc";
+      ctx.fillText(`${i + 1}`, sColX[0], y);
+      ctx.fillText(s.name, sColX[1], y);
+      ctx.fillText(`${s.kills}`, sColX[2], y);
+      ctx.fillText(`${s.deaths}`, sColX[3], y);
+      ctx.fillText(`${s.wins}`, sColX[4], y);
+      ctx.fillText(`${s.damageDealt}`, sColX[5], y);
+      const acc = s.shotsFired > 0 ? Math.round((s.shotsHit / s.shotsFired) * 100) : 0;
+      ctx.fillText(`${acc}%`, sColX[6], y);
+      ctx.fillText(`${s.gamesPlayed}`, sColX[7], y);
+    });
+
+    // Fun awards (after 3+ games)
+    if (this.sessionGamesPlayed >= 3 && entries.length > 1) {
+      const awardY = 165 + entries.length * 28;
+      ctx.font = "bold 16px monospace";
+      ctx.textAlign = "center";
+      ctx.fillStyle = "#ffaa00";
+      ctx.fillText("--- AWARDS ---", w / 2, awardY);
+
+      const awards: Array<{ label: string; name: string; color: string }> = [];
+
+      // Kill King — most kills
+      const killKing = entries[0];
+      awards.push({ label: t("postgame.award.killKing"), name: killKing.name, color: "#ff4444" });
+
+      // Dies the most — most deaths
+      const deathKing = [...entries].sort((a, b) => b.deaths - a.deaths)[0];
+      if (deathKing !== killKing) {
+        awards.push({ label: t("postgame.award.mostDeaths"), name: deathKing.name, color: "#888888" });
+      }
+
+      // Sharpshooter — best accuracy (min 10 shots)
+      const sniperCandidates = entries.filter((e) => e.shotsFired >= 10);
+      if (sniperCandidates.length > 0) {
+        const sniper = sniperCandidates.sort((a, b) =>
+          (b.shotsHit / b.shotsFired) - (a.shotsHit / a.shotsFired))[0];
+        awards.push({ label: t("postgame.award.sniper"), name: sniper.name, color: "#44aaff" });
+      }
+
+      // Serial Winner — most wins
+      const winnerSorted = [...entries].sort((a, b) => b.wins - a.wins);
+      if (winnerSorted[0].wins > 0) {
+        awards.push({ label: t("postgame.award.winner"), name: winnerSorted[0].name, color: "#44ff88" });
+      }
+
+      ctx.font = "14px monospace";
+      awards.forEach((a, i) => {
+        const ay = awardY + 25 + i * 24;
+        ctx.fillStyle = a.color;
+        ctx.fillText(`${a.label}: ${a.name}`, w / 2, ay);
+      });
+    }
+
+    // Tab hint
+    ctx.font = "12px monospace";
+    ctx.fillStyle = COLORS.uiDim;
+    ctx.textAlign = "center";
+    ctx.fillText(t("postgame.matchTab"), w / 2, h - 80);
+
+    // Buttons
+    this.drawMenuButton(ctx, w / 2 - 120, h - 55, 180, 40, t("postgame.playAgain"), COLORS.ui, "btn-play-again", mx, my);
+    this.drawMenuButton(ctx, w / 2 + 120, h - 55, 180, 40, t("postgame.toMenu"), COLORS.uiDim, "btn-to-menu", mx, my);
   }
 
   private drawFriends(): void {
@@ -2144,6 +2842,316 @@ export class Game {
     this.drawMenuButton(ctx, w / 2, h / 2 + 90, 160, 34, t("matchmaking.cancel"), COLORS.gravityWell, "btn-matchmaking-cancel", mx, my);
   }
 
+  private drawPartyLobby(): void {
+    const ctx = this.canvas.getContext("2d")!;
+    const w = this.canvas.width = window.innerWidth;
+    const h = this.canvas.height = window.innerHeight;
+    this.menuClickRegions = [];
+    const mx = this.input.getMouseX();
+    const my = this.input.getMouseY();
+
+    ctx.fillStyle = COLORS.background;
+    ctx.fillRect(0, 0, w, h);
+
+    ctx.font = "bold 36px monospace";
+    ctx.textAlign = "center";
+    ctx.fillStyle = "#aa88ff";
+    ctx.fillText(t("party.title"), w / 2, 50);
+
+    // Not connected yet — show code entry
+    if (!this.partyState) {
+      ctx.font = "18px monospace";
+      ctx.fillStyle = COLORS.ui;
+      ctx.fillText(t("party.enterCode"), w / 2, h / 2 - 50);
+
+      // Code input box
+      const cursor = Math.sin(performance.now() / 300) > 0 ? "_" : "";
+      ctx.strokeStyle = COLORS.ui;
+      ctx.lineWidth = 2;
+      ctx.strokeRect(w / 2 - 100, h / 2 - 30, 200, 40);
+      ctx.font = "bold 20px monospace";
+      ctx.fillStyle = "#ffaa00";
+      ctx.fillText(this.partyCodeInput + cursor, w / 2, h / 2);
+
+      ctx.font = "14px monospace";
+      ctx.fillStyle = COLORS.uiDim;
+      ctx.fillText("ENTER = Beitreten  |  N = Neue Party  |  ESC = Zurueck", w / 2, h / 2 + 40);
+
+      if (this.partyStatus) {
+        ctx.fillStyle = "#ff4444";
+        ctx.fillText(this.partyStatus, w / 2, h / 2 + 70);
+      }
+      return;
+    }
+
+    // Connected — show party info
+    const party = this.partyState;
+
+    // Party code
+    ctx.font = "14px monospace";
+    ctx.fillStyle = COLORS.uiDim;
+    ctx.fillText(t("party.code", { code: party.partyId.toUpperCase() }), w / 2, 75);
+
+    // Session stats view
+    if (this.partyShowSession && party.gamesPlayed > 0) {
+      this.drawPartySessionStats(ctx, w, h, party);
+      ctx.font = "12px monospace";
+      ctx.fillStyle = COLORS.uiDim;
+      ctx.fillText("[S] Zurueck zur Lobby", w / 2, h - 50);
+      this.drawMenuButton(ctx, w / 2, h - 30, 160, 30, t("party.back"), COLORS.uiDim, "btn-party-leave", mx, my);
+      return;
+    }
+
+    // Members list
+    const myId = this.currentUser?.id ?? "";
+    const isLeader = myId === party.leaderId;
+
+    ctx.font = "bold 16px monospace";
+    ctx.fillStyle = COLORS.ui;
+    ctx.textAlign = "center";
+    ctx.fillText(t("party.members", { n: String(party.members.length) }), w / 2, 110);
+
+    for (let i = 0; i < party.members.length; i++) {
+      const m = party.members[i];
+      const y = 140 + i * 32;
+
+      // Background highlight
+      if (m.id === myId) {
+        ctx.fillStyle = "rgba(100,100,255,0.1)";
+        ctx.fillRect(w / 2 - 250, y - 12, 500, 28);
+      }
+
+      ctx.font = "14px monospace";
+      ctx.textAlign = "left";
+
+      // Leader crown
+      if (m.isLeader) {
+        ctx.fillStyle = "#ffaa00";
+        ctx.fillText("[L]", w / 2 - 240, y + 4);
+      }
+
+      // Name
+      ctx.fillStyle = m.id === myId ? "#ffaa00" : "#cccccc";
+      ctx.fillText(m.displayName, w / 2 - 200, y + 4);
+
+      // Level
+      ctx.fillStyle = COLORS.uiDim;
+      ctx.fillText(`Lvl ${m.level}`, w / 2 + 50, y + 4);
+
+      // Ready status
+      ctx.fillStyle = m.ready ? "#44ff88" : "#ff4444";
+      ctx.fillText(m.ready ? t("party.ready") : t("party.notReady"), w / 2 + 130, y + 4);
+    }
+
+    // Settings (leader can change)
+    const settY = 160 + party.members.length * 32;
+    ctx.font = "bold 14px monospace";
+    ctx.textAlign = "center";
+    ctx.fillStyle = COLORS.ui;
+    ctx.fillText(t("party.settings"), w / 2, settY);
+
+    const modeIdx = MODE_OPTIONS.indexOf(party.selectedMode);
+    const mapIdx = MAP_OPTIONS.indexOf(party.selectedMap);
+    ctx.font = "14px monospace";
+    ctx.fillStyle = isLeader ? "#ffaa00" : COLORS.uiDim;
+    ctx.fillText(`${isLeader ? "Q/E " : ""}Modus: ${MODE_OPTIONS[modeIdx]}`, w / 2, settY + 22);
+    ctx.fillText(`${isLeader ? "W/Down " : ""}Karte: ${MAP_OPTIONS[mapIdx]}`, w / 2, settY + 42);
+
+    // Chat messages (last 5)
+    const chatY = settY + 70;
+    ctx.font = "12px monospace";
+    const visibleChat = this.partyChatMessages.slice(-5);
+    for (let i = 0; i < visibleChat.length; i++) {
+      const msg = visibleChat[i];
+      ctx.fillStyle = COLORS.uiDim;
+      ctx.fillText(`${msg.senderName}: ${msg.text}`, w / 2, chatY + i * 18);
+    }
+
+    // Chat input
+    if (this.partyChatOpen) {
+      const inputY = h - 80;
+      ctx.fillStyle = "rgba(0,0,0,0.8)";
+      ctx.fillRect(w / 2 - 200, inputY - 15, 400, 30);
+      ctx.strokeStyle = COLORS.ui;
+      ctx.strokeRect(w / 2 - 200, inputY - 15, 400, 30);
+      const cursor = Math.sin(performance.now() / 300) > 0 ? "_" : "";
+      ctx.font = "14px monospace";
+      ctx.fillStyle = COLORS.ui;
+      ctx.fillText(this.partyChatInput + cursor, w / 2, inputY + 4);
+    }
+
+    // Bottom hints
+    ctx.font = "12px monospace";
+    ctx.fillStyle = COLORS.uiDim;
+    const hints: string[] = [t("party.toggleReady"), t("party.chat")];
+    if (isLeader) hints.push(t("party.start"));
+    if (party.gamesPlayed > 0) hints.push(t("party.session"));
+    ctx.fillText(hints.join("  |  "), w / 2, h - 50);
+
+    this.drawMenuButton(ctx, w / 2, h - 25, 160, 30, t("party.back"), COLORS.uiDim, "btn-party-leave", mx, my);
+  }
+
+  private drawPartySessionStats(ctx: CanvasRenderingContext2D, w: number, _h: number, party: PartyStateSnapshot): void {
+    ctx.font = "bold 24px monospace";
+    ctx.textAlign = "center";
+    ctx.fillStyle = "#aa88ff";
+    ctx.fillText(t("postgame.sessionTitle"), w / 2, 110);
+    ctx.font = "14px monospace";
+    ctx.fillStyle = COLORS.uiDim;
+    ctx.fillText(t("postgame.sessionGames", { n: String(party.gamesPlayed) }), w / 2, 132);
+
+    const entries = Object.values(party.sessionStats).sort((a, b) => b.kills - a.kills);
+    const sColX = [w / 2 - 300, w / 2 - 260, w / 2 - 80, w / 2, w / 2 + 60, w / 2 + 130, w / 2 + 220];
+    const sHeaders = ["#", "Name", "Kills", "Tode", "Siege", "Schaden", "Gen."];
+
+    ctx.font = "bold 13px monospace";
+    ctx.fillStyle = COLORS.ui;
+    ctx.textAlign = "left";
+    sHeaders.forEach((hdr, i) => ctx.fillText(hdr, sColX[i], 160));
+
+    entries.forEach((s, i) => {
+      const y = 185 + i * 26;
+      ctx.font = "12px monospace";
+      ctx.fillStyle = "#cccccc";
+      ctx.fillText(`${i + 1}`, sColX[0], y);
+      ctx.fillText(s.name, sColX[1], y);
+      ctx.fillText(`${s.kills}`, sColX[2], y);
+      ctx.fillText(`${s.deaths}`, sColX[3], y);
+      ctx.fillText(`${s.wins}`, sColX[4], y);
+      ctx.fillText(`${s.damageDealt}`, sColX[5], y);
+      const acc = s.shotsFired > 0 ? Math.round((s.shotsHit / s.shotsFired) * 100) : 0;
+      ctx.fillText(`${acc}%`, sColX[6], y);
+    });
+  }
+
+  private drawTournamentBracket(): void {
+    const ctx = this.canvas.getContext("2d")!;
+    const w = this.canvas.width = window.innerWidth;
+    const h = this.canvas.height = window.innerHeight;
+    this.menuClickRegions = [];
+    const mx = this.input.getMouseX();
+    const my = this.input.getMouseY();
+
+    ctx.fillStyle = COLORS.background;
+    ctx.fillRect(0, 0, w, h);
+
+    // Title
+    ctx.font = "bold 36px monospace";
+    ctx.textAlign = "center";
+    ctx.fillStyle = "#aa88ff";
+    ctx.fillText(t("tournament.bracket"), w / 2, 50);
+
+    // Champion display
+    if (this.tournamentChampion) {
+      ctx.font = "bold 28px monospace";
+      ctx.fillStyle = "#ffaa00";
+      ctx.fillText(t("tournament.champion"), w / 2, 90);
+      ctx.font = "bold 24px monospace";
+      ctx.fillStyle = "#44ff88";
+      ctx.fillText(this.tournamentChampion, w / 2, 120);
+
+      this.drawMenuButton(ctx, w / 2, h - 50, 200, 40, t("tournament.back"), COLORS.uiDim, "btn-tournament-back", mx, my);
+      return;
+    }
+
+    // Draw bracket - group by rounds
+    const rounds = new Map<number, typeof this.tournamentBracket>();
+    for (const match of this.tournamentBracket) {
+      if (!rounds.has(match.round)) rounds.set(match.round, []);
+      rounds.get(match.round)!.push(match);
+    }
+
+    const totalRounds = rounds.size;
+    const bracketWidth = Math.min(w - 80, totalRounds * 250);
+    const startX = (w - bracketWidth) / 2;
+
+    let roundIdx = 0;
+    for (const [round, matches] of rounds) {
+      const rx = startX + roundIdx * (bracketWidth / totalRounds);
+      const colWidth = bracketWidth / totalRounds;
+
+      // Round label
+      ctx.font = "bold 14px monospace";
+      ctx.textAlign = "center";
+      ctx.fillStyle = COLORS.uiDim;
+      const roundLabel = totalRounds > 1 && round === totalRounds
+        ? t("tournament.final")
+        : t("tournament.round", { n: String(round) });
+      ctx.fillText(roundLabel, rx + colWidth / 2, 85);
+
+      // Matches in this round
+      const matchHeight = 65;
+      const totalHeight = matches.length * matchHeight;
+      const matchStartY = 100 + (h - 200 - totalHeight) / 2;
+
+      for (let i = 0; i < matches.length; i++) {
+        const match = matches[i];
+        const my2 = matchStartY + i * matchHeight;
+
+        // Match box
+        const bx = rx + 10;
+        const bw = colWidth - 20;
+        const isNext = match.winner === null && match.player2 !== null;
+
+        ctx.strokeStyle = isNext ? "#ffaa00" : (match.winner ? "#44ff88" : COLORS.uiDim);
+        ctx.lineWidth = isNext ? 2 : 1;
+        ctx.strokeRect(bx, my2, bw, 55);
+
+        if (isNext) {
+          ctx.fillStyle = "rgba(255,170,0,0.05)";
+          ctx.fillRect(bx, my2, bw, 55);
+        }
+
+        // Player 1
+        ctx.font = "13px monospace";
+        ctx.textAlign = "left";
+        ctx.fillStyle = match.winner === match.player1 ? "#44ff88" : "#cccccc";
+        ctx.fillText(match.player1, bx + 10, my2 + 20);
+
+        // VS
+        ctx.font = "10px monospace";
+        ctx.fillStyle = COLORS.uiDim;
+        ctx.textAlign = "center";
+        ctx.fillText("vs", bx + bw / 2, my2 + 30);
+
+        // Player 2
+        ctx.font = "13px monospace";
+        ctx.textAlign = "left";
+        if (match.player2) {
+          ctx.fillStyle = match.winner === match.player2 ? "#44ff88" : "#cccccc";
+          ctx.fillText(match.player2, bx + 10, my2 + 45);
+        } else {
+          ctx.fillStyle = COLORS.uiDim;
+          ctx.fillText(t("tournament.bye"), bx + 10, my2 + 45);
+        }
+
+        // Winner indicator
+        if (match.winner) {
+          ctx.font = "bold 12px monospace";
+          ctx.textAlign = "right";
+          ctx.fillStyle = "#44ff88";
+          ctx.fillText("WIN", bx + bw - 8, my2 + 32);
+        }
+      }
+
+      roundIdx++;
+    }
+
+    // Next match button
+    const nextIdx = this.tournamentBracket.findIndex((m) => m.winner === null && m.player2 !== null);
+    if (nextIdx >= 0) {
+      const nextMatch = this.tournamentBracket[nextIdx];
+      ctx.font = "14px monospace";
+      ctx.textAlign = "center";
+      ctx.fillStyle = "#ffaa00";
+      ctx.fillText(t("tournament.nextMatch", { p1: nextMatch.player1, p2: nextMatch.player2! }), w / 2, h - 90);
+
+      this.drawMenuButton(ctx, w / 2 - 120, h - 55, 200, 40, "Match starten", COLORS.ui, "btn-tournament-next", mx, my);
+    }
+
+    this.drawMenuButton(ctx, w / 2 + 120, h - 55, 160, 40, t("tournament.back"), COLORS.uiDim, "btn-tournament-back", mx, my);
+  }
+
   private drawInputField(
     ctx: CanvasRenderingContext2D, cx: number, y: number,
     label: string, fieldName: string, isPassword: boolean,
@@ -2300,8 +3308,8 @@ export class Game {
       ctx.fillText(t("challenges.empty"), w / 2, 200);
     }
 
-    // Achievements section
-    const achY = weeklyY + 50 + this.weeklyChallenges.length * 55;
+    // Achievements section — ensure no overlap with empty-state text at y=200
+    const achY = Math.max(250, weeklyY + 50 + this.weeklyChallenges.length * 55);
     ctx.font = "bold 20px monospace";
     ctx.textAlign = "center";
     ctx.fillStyle = "#ff44aa";
@@ -2369,11 +3377,12 @@ export class Game {
     }
 
     const level = this.currentUser?.level ?? 1;
-    let items: { name: string; detail: string; unlockLevel: number; color: string }[] = [];
+    let items: { id: string; name: string; detail: string; unlockLevel: number; color: string }[] = [];
 
     if (this.cosmeticCategory === 0) {
       // Skins
       items = SKIN_CONFIGS.map((s) => ({
+        id: s.id,
         name: s.name,
         detail: `${SHIP_CONFIGS[s.shipClass].name} | Farbe`,
         unlockLevel: s.unlockLevel,
@@ -2382,6 +3391,7 @@ export class Game {
     } else if (this.cosmeticCategory === 1) {
       // Trails
       items = TRAIL_CONFIGS.map((t) => ({
+        id: t.id,
         name: t.name,
         detail: `${t.particleCount} Partikel | ${t.lifetime}ms`,
         unlockLevel: t.unlockLevel,
@@ -2390,6 +3400,7 @@ export class Game {
     } else if (this.cosmeticCategory === 2) {
       // Kill effects
       items = KILL_EFFECT_CONFIGS.map((e) => ({
+        id: e.id,
         name: e.name,
         detail: `${e.colors.length} Farben`,
         unlockLevel: e.unlockLevel,
@@ -2398,6 +3409,7 @@ export class Game {
     } else {
       // Titles
       items = TITLE_CONFIGS.map((t) => ({
+        id: t.id,
         name: t.name,
         detail: "",
         unlockLevel: t.unlockLevel,
@@ -2420,7 +3432,9 @@ export class Game {
       const y = startY + row * (itemH + 10);
       if (y > h - 80) break;
 
-      const unlocked = item.unlockLevel === 0 || level >= item.unlockLevel;
+      const unlocked = item.unlockLevel === 0
+        ? ACHIEVEMENT_CONFIGS.some((a) => a.rewardId === item.id && this.unlockedAchievements.includes(a.id))
+        : level >= item.unlockLevel;
 
       // Card
       ctx.fillStyle = unlocked ? "#111133" : "#0a0a1a";
@@ -2460,6 +3474,391 @@ export class Game {
 
     // Navigation button
     this.drawMenuButton(ctx, w / 2, h - 35, 140, 34, t("cosmetics.back"), COLORS.uiDim, "btn-cosmetics-back", mx, my);
+  }
+
+  // ===== Kill-Cam & Highlights =====
+
+  private recordPositionFrame(): void {
+    if (!this.gameState) return;
+    const snapshot: Record<string, { x: number; y: number; rot: number; alive: boolean }> = {};
+    for (const [id, p] of Object.entries(this.gameState.players)) {
+      snapshot[id] = { x: p.position.x, y: p.position.y, rot: p.rotation, alive: p.alive };
+    }
+    this.positionHistory.push(snapshot);
+    // Keep last 150 frames (~2.5s at 60fps)
+    if (this.positionHistory.length > 150) {
+      this.positionHistory.shift();
+    }
+  }
+
+  private detectLocalPlayerDeath(): void {
+    if (!this.gameState) return;
+    const localPlayer = this.gameState.players[this.localPlayerId];
+    if (!localPlayer) return;
+
+    const wasDead = !this.prevLocalAlive;
+    const isDead = !localPlayer.alive;
+    this.prevLocalAlive = localPlayer.alive;
+
+    // Detect death transition (alive → dead)
+    if (isDead && !wasDead) {
+      // Find the kill event for this death
+      const killEvent = [...this.gameState.killFeed]
+        .reverse()
+        .find((e) => e.victimId === this.localPlayerId);
+
+      if (killEvent && this.positionHistory.length > 0) {
+        this.killCamData = {
+          frames: [...this.positionHistory],
+          killerId: killEvent.killerId,
+          killerName: killEvent.killerName,
+          killType: killEvent.killType,
+        };
+        this.killCamTimer = 2.5;
+
+        // Track highlight score
+        this.trackHighlightKill(killEvent);
+      }
+    }
+  }
+
+  private trackHighlightKill(event: KillEvent): void {
+    let score = 1;
+    let label = "ELIMINIERT";
+
+    if (event.killType === "gravity-well") { score += 3; label = "GRAVITY MASTER"; }
+    if (event.killType === "ricochet") { score += 2; label = "RICOCHET!"; }
+    if (event.killType === "homing") { score += 1; label = "ZIELSUCHEND"; }
+    if (event.killType === "emp") { score += 2; label = "EMP STRIKE"; }
+
+    // Check if this was a multi-kill (combo)
+    const recentKills = this.gameState?.killFeed.filter(
+      (e) => e.killerId === event.killerId && e.timestamp >= event.timestamp - 120,
+    ) || [];
+    if (recentKills.length >= 3) { score += 4; label = "MULTI-KILL!"; }
+    else if (recentKills.length >= 2) { score += 2; label = "DOPPELKILL!"; }
+
+    this.highlightKills.push({
+      killerName: event.killerName,
+      victimName: event.victimName,
+      killType: event.killType,
+      score,
+      label,
+    });
+  }
+
+  private drawKillCamOverlay(): void {
+    if (!this.killCamData) return;
+    const ctx = this.canvas.getContext("2d")!;
+    const w = this.canvas.width;
+    const h = this.canvas.height;
+
+    // Kill-cam box dimensions
+    const boxW = 320;
+    const boxH = 200;
+    const boxX = w - boxW - 20;
+    const boxY = h - boxH - 80;
+
+    // Semi-transparent background
+    ctx.fillStyle = "rgba(0, 0, 0, 0.75)";
+    ctx.fillRect(boxX, boxY, boxW, boxH);
+    ctx.strokeStyle = "#ff4444";
+    ctx.lineWidth = 2;
+    ctx.strokeRect(boxX, boxY, boxW, boxH);
+
+    // "KILL CAM" header
+    ctx.font = "bold 12px monospace";
+    ctx.textAlign = "left";
+    ctx.fillStyle = "#ff4444";
+    ctx.fillText("KILL CAM", boxX + 8, boxY + 16);
+
+    // Replay the recorded frames as mini animation
+    const frames = this.killCamData.frames;
+    const totalDuration = 2.5;
+    const elapsed = totalDuration - this.killCamTimer;
+    const progress = Math.min(1, elapsed / totalDuration);
+    const frameIndex = Math.floor(progress * (frames.length - 1));
+    const frame = frames[Math.min(frameIndex, frames.length - 1)];
+
+    if (frame) {
+      // Find bounds of all players in the recording for scaling
+      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+      for (const snap of Object.values(frame)) {
+        minX = Math.min(minX, snap.x);
+        minY = Math.min(minY, snap.y);
+        maxX = Math.max(maxX, snap.x);
+        maxY = Math.max(maxY, snap.y);
+      }
+
+      // Add padding
+      const padding = 100;
+      minX -= padding; minY -= padding;
+      maxX += padding; maxY += padding;
+      const rangeX = Math.max(maxX - minX, 200);
+      const rangeY = Math.max(maxY - minY, 200);
+      const scaleX = (boxW - 20) / rangeX;
+      const scaleY = (boxH - 40) / rangeY;
+      const sc = Math.min(scaleX, scaleY);
+
+      const centerX = boxX + boxW / 2;
+      const centerY = boxY + boxH / 2 + 10;
+      const midX = (minX + maxX) / 2;
+      const midY = (minY + maxY) / 2;
+
+      // Draw all players as triangles
+      for (const [id, snap] of Object.entries(frame)) {
+        if (!snap.alive) continue;
+        const sx = centerX + (snap.x - midX) * sc;
+        const sy = centerY + (snap.y - midY) * sc;
+        const size = 6;
+
+        ctx.save();
+        ctx.translate(sx, sy);
+        ctx.rotate(snap.rot);
+
+        if (id === this.killCamData.killerId) {
+          ctx.fillStyle = "#ff4444"; // Killer in red
+        } else if (id === this.localPlayerId) {
+          ctx.fillStyle = "#4488ff"; // Victim (you) in blue
+        } else {
+          ctx.fillStyle = "#444466"; // Others dimmed
+        }
+
+        ctx.beginPath();
+        ctx.moveTo(size, 0);
+        ctx.lineTo(-size * 0.6, -size * 0.5);
+        ctx.lineTo(-size * 0.6, size * 0.5);
+        ctx.closePath();
+        ctx.fill();
+        ctx.restore();
+      }
+    }
+
+    // Kill info text
+    const killTypeLabels: Record<string, string> = {
+      "normal": "", "gravity-well": "Gravity Well", "ricochet": "Ricochet",
+      "homing": "Homing", "emp": "EMP", "melee": "Melee",
+    };
+    const typeText = killTypeLabels[this.killCamData.killType] || "";
+
+    ctx.font = "bold 14px monospace";
+    ctx.textAlign = "center";
+    ctx.fillStyle = "#ff4444";
+    ctx.fillText(`ELIMINIERT VON ${this.killCamData.killerName.toUpperCase()}`, boxX + boxW / 2, boxY + boxH - 22);
+    if (typeText) {
+      ctx.font = "11px monospace";
+      ctx.fillStyle = "#ff888888";
+      ctx.fillText(typeText, boxX + boxW / 2, boxY + boxH - 8);
+    }
+  }
+
+  private drawHighlightReel(ctx: CanvasRenderingContext2D, w: number, h: number): void {
+    const t = this.highlightPhaseTimer;
+
+    // Intro (0-1s): "HIGHLIGHTS" title
+    if (t < 1) {
+      const alpha = Math.min(1, t * 2);
+      ctx.globalAlpha = alpha;
+      ctx.font = "bold 48px monospace";
+      ctx.textAlign = "center";
+      ctx.fillStyle = "#ffaa00";
+      ctx.fillText("HIGHLIGHTS", w / 2, h / 2);
+      ctx.globalAlpha = 1;
+      return;
+    }
+
+    // Show highlight cards (2s each)
+    const cardTime = t - 1;
+    const cardIndex = Math.floor(cardTime / 2);
+    const cardProgress = (cardTime % 2) / 2;
+
+    if (cardIndex >= this.highlightKills.length) return;
+
+    const kill = this.highlightKills[cardIndex];
+    const cardY = h / 2 - 60;
+
+    // Card entrance animation
+    const slideIn = Math.min(1, cardProgress * 4); // 0.25s slide
+    const offsetX = (1 - slideIn) * 300;
+
+    ctx.save();
+    ctx.translate(offsetX, 0);
+
+    // Card number
+    ctx.font = "bold 24px monospace";
+    ctx.textAlign = "center";
+    ctx.fillStyle = "#ffaa0088";
+    ctx.fillText(`#${cardIndex + 1}`, w / 2, cardY - 40);
+
+    // Kill label (GRAVITY MASTER, DOPPELKILL, etc.)
+    ctx.font = "bold 36px monospace";
+    ctx.fillStyle = "#ff44aa";
+    ctx.fillText(kill.label, w / 2, cardY);
+
+    // Killer → Victim
+    ctx.font = "bold 20px monospace";
+    ctx.fillStyle = COLORS.ui;
+    ctx.fillText(`${kill.killerName}  →  ${kill.victimName}`, w / 2, cardY + 40);
+
+    // Kill type
+    if (kill.killType !== "normal") {
+      ctx.font = "14px monospace";
+      ctx.fillStyle = "#aa88ff";
+      ctx.fillText(kill.killType.replace("-", " ").toUpperCase(), w / 2, cardY + 70);
+    }
+
+    ctx.restore();
+
+    // Skip hint
+    ctx.font = "12px monospace";
+    ctx.fillStyle = "#444466";
+    ctx.textAlign = "center";
+    ctx.fillText("Enter = Skip", w / 2, h - 30);
+  }
+
+  // ===== Mutator Roulette =====
+
+  private startMutatorRoulette(): void {
+    // Pre-select 2-3 random mutators (excluding mirror-match since it's a separate toggle)
+    const pool = MUTATOR_OPTIONS.filter((m) => m !== "mirror-match");
+    const count = 2 + Math.floor(Math.random() * 2); // 2 or 3
+    const shuffled = [...pool].sort(() => Math.random() - 0.5);
+    this.rouletteSelected = shuffled.slice(0, count);
+    // Keep mirror-match if it was manually enabled
+    if (this.selectedMutators.includes("mirror-match")) {
+      this.rouletteSelected.push("mirror-match");
+    }
+    this.rouletteTimer = 0;
+    this.rouletteHighlight = 0;
+    this.rouletteLockedCount = 0;
+    this.screen = "mutator-roulette";
+  }
+
+  private drawMutatorRoulette(_dt: number): void {
+    const ctx = this.canvas.getContext("2d")!;
+    const w = this.canvas.width = window.innerWidth;
+    const h = this.canvas.height = window.innerHeight;
+
+    ctx.fillStyle = COLORS.background;
+    ctx.fillRect(0, 0, w, h);
+
+    // Title
+    ctx.font = "bold 36px monospace";
+    ctx.textAlign = "center";
+    ctx.fillStyle = "#aa88ff";
+    ctx.fillText("MUTATOR ROULETTE", w / 2, 80);
+
+    const pool = MUTATOR_OPTIONS.filter((m) => m !== "mirror-match");
+    const cols = 3;
+    const cardW = 200;
+    const cardH = 50;
+    const gap = 12;
+    const startX = w / 2 - ((cols * (cardW + gap)) - gap) / 2;
+    const startY = 140;
+
+    const t = this.rouletteTimer;
+
+    // Phase 1 (0-2s): Rapid scanning highlight
+    // Phase 2 (2-3.5s): Lock in mutators one by one
+    // Phase 3 (3.5-4.5s): Show "LOS!" and auto-start
+
+    // Update scanning highlight during phase 1
+    if (t < 2) {
+      this.rouletteHighlight = Math.floor(t * 12) % pool.length;
+    }
+
+    // Lock in mutators during phase 2
+    const lockInterval = 0.5;
+    if (t >= 2) {
+      this.rouletteLockedCount = Math.min(
+        this.rouletteSelected.filter((m) => m !== "mirror-match").length,
+        Math.floor((t - 2) / lockInterval) + 1,
+      );
+    }
+
+    // Draw mutator cards
+    for (let i = 0; i < pool.length; i++) {
+      const mut = pool[i];
+      const col = i % cols;
+      const row = Math.floor(i / cols);
+      const x = startX + col * (cardW + gap);
+      const y = startY + row * (cardH + gap);
+
+      const selectedIndex = this.rouletteSelected.filter((m) => m !== "mirror-match").indexOf(mut);
+      const isLocked = selectedIndex >= 0 && selectedIndex < this.rouletteLockedCount;
+      const isScanning = t < 2 && i === this.rouletteHighlight;
+
+      // Card background
+      if (isLocked) {
+        ctx.fillStyle = "#2a1144";
+        ctx.fillRect(x, y, cardW, cardH);
+        ctx.strokeStyle = "#aa88ff";
+        ctx.lineWidth = 3;
+        ctx.strokeRect(x, y, cardW, cardH);
+        // Glow effect
+        ctx.shadowColor = "#aa88ff";
+        ctx.shadowBlur = 15;
+        ctx.strokeRect(x, y, cardW, cardH);
+        ctx.shadowBlur = 0;
+      } else if (isScanning) {
+        ctx.fillStyle = "#1a1133";
+        ctx.fillRect(x, y, cardW, cardH);
+        ctx.strokeStyle = "#6644aa";
+        ctx.lineWidth = 2;
+        ctx.strokeRect(x, y, cardW, cardH);
+      } else {
+        ctx.fillStyle = "#0d0d1a";
+        ctx.fillRect(x, y, cardW, cardH);
+        ctx.strokeStyle = "#222244";
+        ctx.lineWidth = 1;
+        ctx.strokeRect(x, y, cardW, cardH);
+      }
+
+      // Mutator name
+      const config = MUTATOR_CONFIGS[mut];
+      ctx.font = "bold 14px monospace";
+      ctx.textAlign = "center";
+      ctx.fillStyle = isLocked ? "#cc99ff" : (isScanning ? "#8866cc" : "#444466");
+      ctx.fillText(config?.name || mut, x + cardW / 2, y + 22);
+
+      // Description for locked
+      if (isLocked && config) {
+        ctx.font = "11px monospace";
+        ctx.fillStyle = "#aa88ff88";
+        ctx.fillText(config.description, x + cardW / 2, y + 40);
+      }
+    }
+
+    // Mirror match indicator (if enabled)
+    if (this.rouletteSelected.includes("mirror-match")) {
+      const mmY = startY + Math.ceil(pool.length / cols) * (cardH + gap) + 20;
+      ctx.font = "bold 14px monospace";
+      ctx.fillStyle = "#cc99ff";
+      ctx.textAlign = "center";
+      ctx.fillText("+ MIRROR MATCH", w / 2, mmY);
+    }
+
+    // Phase 3: "LOS!" text and auto-start
+    if (t >= 3.5) {
+      const flash = Math.sin(t * 8) > 0;
+      ctx.font = "bold 48px monospace";
+      ctx.fillStyle = flash ? "#ff44aa" : "#aa88ff";
+      ctx.textAlign = "center";
+      ctx.fillText("LOS!", w / 2, h - 80);
+    }
+
+    // Auto-start after 4.5 seconds
+    if (t >= 4.5) {
+      this.selectedMutators = [...this.rouletteSelected];
+      this.startLocalGame();
+      return;
+    }
+
+    // Skip hint
+    ctx.font = "12px monospace";
+    ctx.fillStyle = "#444466";
+    ctx.textAlign = "center";
+    ctx.fillText("Enter = Skip", w / 2, h - 30);
   }
 
   // ===== Existing Screen Drawings =====
@@ -2659,25 +4058,26 @@ export class Game {
 
     const mutatorNames: Record<string, string> = {
       "hypergravity": "Hypergravity", "zero-g": "Zero-G", "big-head": "Big Head",
-      "ricochet-arena": "Ricochet", "glass-cannon": "Glass Cannon",
+      "ricochet-arena": "Ricochet", "glass-cannon": "Glass Cannon", "mystery-loadout": "Mystery Loadout",
       "fog-of-war": "Fog of War", "speed-demon": "Speed Demon", "friendly-fire": "Friendly Fire",
+      "mirror-match": "Mirror Match",
     };
     const mutatorKeys: Record<string, string> = {
       "hypergravity": "G", "zero-g": "Z", "big-head": "B",
-      "ricochet-arena": "R", "glass-cannon": "C",
+      "ricochet-arena": "R", "glass-cannon": "C", "mystery-loadout": "Y",
       "fog-of-war": "F", "speed-demon": "D", "friendly-fire": "X",
+      "mirror-match": "I",
     };
 
-    // Filter out mystery-loadout from manual selection (it's random)
-    const selectableMutators = MUTATOR_OPTIONS.filter((m) => m !== "mystery-loadout");
-    const cols = 4;
+    const selectableMutators = MUTATOR_OPTIONS;
+    const cols = 5;
     for (let i = 0; i < selectableMutators.length; i++) {
       const mut = selectableMutators[i];
       const col = i % cols;
       const row = Math.floor(i / cols);
-      const bx = w / 2 - 310 + col * 158;
+      const bx = w / 2 - 315 + col * 128;
       const by = 415 + row * 42;
-      const bw = 148;
+      const bw = 120;
       const bh = 34;
       const isActive = this.selectedMutators.includes(mut);
       const regionId = `mutator-${mut}`;
@@ -2715,8 +4115,19 @@ export class Game {
       }
     }
 
-    this.drawMenuButton(ctx, w / 2, 540, 220, 44, t("settings.start"), COLORS.ui, "button-start-game", mx, my);
-    this.drawMenuButton(ctx, w / 2, 595, 150, 36, t("settings.back"), COLORS.uiDim, "button-settings-back", mx, my);
+    // Roulette toggle
+    const rouletteRegion = "btn-roulette-toggle";
+    const rouletteHovered = this.hitTestLocal(mx, my) === rouletteRegion;
+    const rouletteColor = this.rouletteEnabled ? "#ff44aa" : (rouletteHovered ? COLORS.ui : "#444466");
+    ctx.font = "bold 13px monospace";
+    ctx.textAlign = "center";
+    ctx.fillStyle = rouletteColor;
+    ctx.fillText(`[O] Roulette: ${this.rouletteEnabled ? "AN" : "AUS"}`, w / 2, 530);
+    this.menuClickRegions.push({ x: w / 2 - 80, y: 518, width: 160, height: 20, id: rouletteRegion });
+
+    this.drawMenuButton(ctx, w / 2 - 130, 565, 220, 44, t("settings.start"), COLORS.ui, "button-start-game", mx, my);
+    this.drawMenuButton(ctx, w / 2 + 130, 565, 220, 44, t("tournament.title"), "#aa88ff", "button-start-tournament", mx, my);
+    this.drawMenuButton(ctx, w / 2, 625, 150, 36, t("settings.back"), COLORS.uiDim, "button-settings-back", mx, my);
   }
 
   private drawOnlineLobby(): void {

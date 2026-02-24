@@ -1,12 +1,14 @@
 import { GameRoom } from "./game-room";
+import { PartyRoom } from "./party-room";
 import { sendPasswordResetEmail } from "./email";
 import { generateGuestName } from "./guest-names";
 import type { AuthUser, FriendInfo, PresenceStatus } from "../shared/types";
 
-export { GameRoom };
+export { GameRoom, PartyRoom };
 
 export interface Env {
   GAME_ROOM: DurableObjectNamespace;
+  PARTY_ROOM: DurableObjectNamespace;
   DB: D1Database;
   KV: KVNamespace;
   RESEND_API_KEY: string;
@@ -28,6 +30,15 @@ export default {
       const id = env.GAME_ROOM.idFromName(roomId);
       const room = env.GAME_ROOM.get(id);
       return room.fetch(request);
+    }
+
+    // WebSocket upgrade for party rooms
+    if (url.pathname.startsWith("/ws/party/")) {
+      const partyId = url.pathname.split("/ws/party/")[1];
+      if (!partyId) return new Response("Missing party ID", { status: 400 });
+      const id = env.PARTY_ROOM.idFromName(partyId);
+      const party = env.PARTY_ROOM.get(id);
+      return party.fetch(request);
     }
 
     // Room info/configure (forwarded to Durable Object)
@@ -67,6 +78,12 @@ async function handleApi(url: URL, request: Request, env: Env): Promise<Response
     if (path === "/rooms/create" && method === "POST") {
       const roomId = crypto.randomUUID().slice(0, 8);
       return Response.json({ roomId });
+    }
+
+    // Create party
+    if (path === "/party/create" && method === "POST") {
+      const partyId = crypto.randomUUID().slice(0, 8);
+      return Response.json({ partyId });
     }
 
     // ===== Guest Auth =====

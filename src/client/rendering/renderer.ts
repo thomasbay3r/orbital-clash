@@ -76,6 +76,10 @@ export class Renderer {
     const localPlayer = state.players[localPlayerId];
     if (localPlayer) {
       this.updateCamera(localPlayer, state);
+    } else {
+      // Spectator mode: follow first alive player (e.g. tournament bot-vs-bot)
+      const firstPlayer = Object.values(state.players).find((p) => p.alive) ?? Object.values(state.players)[0];
+      if (firstPlayer) this.updateCamera(firstPlayer, state);
     }
 
     // Slowmo zoom effect (brief zoom-in on game end)
@@ -1053,12 +1057,16 @@ export class Renderer {
     this.drawButton(ctx, w / 2, btnY + 65, 260, 48, t("menu.multiplayer"), COLORS.uiDim, "button-online", hoveredId);
     this.drawButton(ctx, w / 2, btnY + 130, 260, 48, t("menu.quickPlay"), COLORS.uiDim, "button-quickplay", hoveredId);
 
+    // Party buttons
+    this.drawButton(ctx, w / 2 - 70, btnY + 195, 140, 40, "Party (N)", "#aa88ff", "button-party-create", hoveredId);
+    this.drawButton(ctx, w / 2 + 70, btnY + 195, 140, 40, "Join (J)", "#aa88ff", "button-party-join", hoveredId);
+
     // Secondary buttons
     const accountLabel = this.accountButtonLabel;
     if (accountLabel) {
-      this.drawButton(ctx, w / 2 - 90, btnY + 200, 160, 36, accountLabel, "#ffaa00", "button-account", hoveredId);
+      this.drawButton(ctx, w / 2 - 90, btnY + 250, 160, 36, accountLabel, "#ffaa00", "button-account", hoveredId);
     }
-    this.drawButton(ctx, w / 2 + 90, btnY + 200, 160, 36, t("menu.friends"), COLORS.uiDim, "button-friends", hoveredId);
+    this.drawButton(ctx, w / 2 + 90, btnY + 250, 160, 36, t("menu.friends"), COLORS.uiDim, "button-friends", hoveredId);
 
     // Controls hint
     ctx.font = "12px monospace";
