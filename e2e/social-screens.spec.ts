@@ -3,6 +3,10 @@ import { getTestState, waitForScreen, waitForGameReady } from "./helpers";
 
 test.describe("Social Screens Navigation", () => {
   test.beforeEach(async ({ page }) => {
+    // Disable tutorials so overlays don't block navigation
+    await page.addInitScript(() => {
+      localStorage.setItem("tutorialEnabled", "false");
+    });
     await page.goto("/");
     await waitForGameReady(page);
   });
@@ -58,6 +62,10 @@ test.describe("Social Screens Navigation", () => {
 
 test.describe("Kill Feed & Post-Game State", () => {
   test.beforeEach(async ({ page }) => {
+    // Disable tutorials so overlays don't block navigation
+    await page.addInitScript(() => {
+      localStorage.setItem("tutorialEnabled", "false");
+    });
     await page.goto("/");
     await waitForGameReady(page);
   });
@@ -87,6 +95,10 @@ test.describe("Kill Feed & Post-Game State", () => {
 
 test.describe("Challenges & Cosmetics Screens", () => {
   test.beforeEach(async ({ page }) => {
+    // Disable tutorials so overlays don't block navigation
+    await page.addInitScript(() => {
+      localStorage.setItem("tutorialEnabled", "false");
+    });
     await page.goto("/");
     await waitForGameReady(page);
   });
@@ -167,6 +179,10 @@ test.describe("Challenges & Cosmetics Screens", () => {
 
 test.describe("Polish Features (Phase 4)", () => {
   test.beforeEach(async ({ page }) => {
+    // Disable tutorials so overlays don't block navigation
+    await page.addInitScript(() => {
+      localStorage.setItem("tutorialEnabled", "false");
+    });
     await page.goto("/");
     await waitForGameReady(page);
   });

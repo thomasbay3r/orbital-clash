@@ -15,6 +15,10 @@ async function startLocalGame(page: import("@playwright/test").Page) {
 
 test.describe("Gameplay", () => {
   test.beforeEach(async ({ page }) => {
+    // Disable tutorials so overlays don't block navigation
+    await page.addInitScript(() => {
+      localStorage.setItem("tutorialEnabled", "false");
+    });
     await page.goto("/");
     await waitForGameReady(page);
   });

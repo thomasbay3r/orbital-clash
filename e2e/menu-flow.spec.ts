@@ -3,6 +3,10 @@ import { getTestState, waitForScreen, waitForGameReady } from "./helpers";
 
 test.describe("Menu Flow", () => {
   test.beforeEach(async ({ page }) => {
+    // Disable tutorials so overlays don't block navigation
+    await page.addInitScript(() => {
+      localStorage.setItem("tutorialEnabled", "false");
+    });
     await page.goto("/");
     await waitForGameReady(page);
   });
