@@ -465,3 +465,23 @@ export const DIFFICULTY_PRESETS: BotDifficultyPreset[] = [
 ];
 
 export const DEFAULT_DIFFICULTY_INDEX = 2;
+
+// ===== Tutorial =====
+export type TutorialScreenId =
+  | "game-config" | "mod-select" | "settings" | "first-gameplay"
+  | "profile" | "challenges" | "cosmetics" | "friends"
+  | "party-lobby" | "emote-wheel" | "scoreboard";
+
+export const TUTORIAL_SCREENS: { id: TutorialScreenId; type: "overlay" | "banner" }[] = [
+  { id: "game-config", type: "overlay" },
+  { id: "mod-select", type: "overlay" },
+  { id: "settings", type: "overlay" },
+  { id: "first-gameplay", type: "overlay" },
+  { id: "profile", type: "banner" },
+  { id: "challenges", type: "banner" },
+  { id: "cosmetics", type: "banner" },
+  { id: "friends", type: "banner" },
+  { id: "party-lobby", type: "banner" },
+  { id: "emote-wheel", type: "banner" },
+  { id: "scoreboard", type: "banner" },
+];
