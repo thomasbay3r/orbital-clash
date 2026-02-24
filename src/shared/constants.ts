@@ -196,7 +196,7 @@ export const COLORS = {
   gravityWellCore: "#ff40a0",
   projectile: "#ffffff",
   ui: "#e0e0ff",
-  uiDim: "#606080",
+  uiDim: "#8888aa",
   hpBar: "#00ff44",
   hpBarDamage: "#ff4444",
   energyBar: "#4488ff",

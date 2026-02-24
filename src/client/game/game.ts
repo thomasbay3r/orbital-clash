@@ -1972,16 +1972,16 @@ export class Game {
 
       // Number label
       ctx.font = "bold 12px monospace";
-      ctx.fillStyle = locked ? "#444444" : "#888888";
+      ctx.fillStyle = locked ? COLORS.uiDim : "#888888";
       ctx.fillText(`${i + 1}`, ex, ey - 14);
 
       // Emote text or lock indicator
       ctx.font = "bold 16px monospace";
       if (locked) {
-        ctx.fillStyle = "#444444";
+        ctx.fillStyle = COLORS.uiDim;
         ctx.fillText(`Lvl ${EMOTE_CONFIGS[i].unlockLevel}`, ex, ey + 4);
       } else {
-        ctx.fillStyle = this.emoteCooldown > 0 ? "#555555" : "#ffffff";
+        ctx.fillStyle = this.emoteCooldown > 0 ? COLORS.uiDim : "#ffffff";
         ctx.fillText(EMOTE_CONFIGS[i].text, ex, ey + 4);
       }
     }
@@ -2254,7 +2254,7 @@ export class Game {
       const event = this.killFeed[i];
       const isLocal = event.killerId === this.localPlayerId || event.victimId === this.localPlayerId;
 
-      ctx.font = "12px monospace";
+      ctx.font = "13px monospace";
       ctx.textAlign = "right";
       ctx.fillStyle = isLocal ? "#ffaa00" : "#999999";
       ctx.fillText(this.getKillText(event), x, y);
@@ -2285,7 +2285,7 @@ export class Game {
     for (let i = 0; i < visible.length; i++) {
       const msg = visible[i];
       const y = baseY - (visible.length - 1 - i) * 18;
-      ctx.font = "12px monospace";
+      ctx.font = "13px monospace";
       ctx.textAlign = "left";
       ctx.fillStyle = "rgba(0,0,0,0.5)";
       ctx.fillRect(x - 5, y - 12, 400, 16);
@@ -2301,7 +2301,7 @@ export class Game {
       const y = baseY + 5;
       ctx.fillStyle = "rgba(0,0,0,0.7)";
       ctx.fillRect(x - 5, y - 12, 400, 20);
-      ctx.font = "12px monospace";
+      ctx.font = "13px monospace";
       ctx.fillStyle = "#ffffff";
       const cursor = Math.sin(performance.now() / 300) > 0 ? "_" : "";
       ctx.fillText(`> ${this.chatInput}${cursor}`, x, y);
@@ -2347,7 +2347,7 @@ export class Game {
 
     // User info top-right
     if (this.currentUser) {
-      ctx.font = "12px monospace";
+      ctx.font = "13px monospace";
       ctx.textAlign = "right";
       ctx.fillStyle = "#aaaaaa";
       ctx.fillText(`${this.currentUser.displayName} (Lvl ${this.currentUser.level})`, w - 20, 20);
@@ -2356,7 +2356,7 @@ export class Game {
     // Keyboard shortcut hints at bottom
     ctx.font = "13px monospace";
     ctx.textAlign = "center";
-    ctx.fillStyle = "#8888aa";
+    ctx.fillStyle = COLORS.uiDim;
     ctx.fillText(t("menu.shortcuts"), w / 2, ctx.canvas.height - 15);
 
     // Language toggle (bottom-right)
@@ -2366,11 +2366,11 @@ export class Game {
     const langY = ctx.canvas.height - 15;
     const currentLang = getLang();
     // Highlight current language
-    const deColor = currentLang === "de" ? "#ffaa00" : "#8888aa";
-    const enColor = currentLang === "en" ? "#ffaa00" : "#8888aa";
+    const deColor = currentLang === "de" ? "#ffaa00" : COLORS.uiDim;
+    const enColor = currentLang === "en" ? "#ffaa00" : COLORS.uiDim;
     ctx.fillStyle = deColor;
     ctx.fillText("DE", langX - 30, langY);
-    ctx.fillStyle = "#8888aa";
+    ctx.fillStyle = COLORS.uiDim;
     ctx.fillText("|", langX - 18, langY);
     ctx.fillStyle = enColor;
     ctx.fillText("EN", langX, langY);
@@ -2448,7 +2448,7 @@ export class Game {
     result.players.forEach((p, i) => {
       const y = 170 + i * 28;
       const isLocal = p.id === this.localPlayerId;
-      ctx.font = "12px monospace";
+      ctx.font = "13px monospace";
       ctx.fillStyle = isLocal ? "#ffaa00" : "#cccccc";
       ctx.fillText(`${i + 1}`, colX[0], y);
       ctx.fillText(p.name, colX[1], y);
@@ -2468,7 +2468,7 @@ export class Game {
 
     // Session tab hint (if there are session stats from previous games)
     if (this.sessionGamesPlayed > 1) {
-      ctx.font = "12px monospace";
+      ctx.font = "13px monospace";
       ctx.fillStyle = COLORS.uiDim;
       ctx.fillText(t("postgame.sessionTab") + "  |  " + t("postgame.sessionGames", { n: String(this.sessionGamesPlayed) }), w / 2, xpY + 25);
     }
@@ -2512,7 +2512,7 @@ export class Game {
     entries.forEach((s, i) => {
       const y = 150 + i * 28;
       const isLocal = s === this.sessionStats[this.localPlayerId];
-      ctx.font = "12px monospace";
+      ctx.font = "13px monospace";
       ctx.fillStyle = isLocal ? "#ffaa00" : "#cccccc";
       ctx.fillText(`${i + 1}`, sColX[0], y);
       ctx.fillText(s.name, sColX[1], y);
@@ -2568,7 +2568,7 @@ export class Game {
     }
 
     // Tab hint
-    ctx.font = "12px monospace";
+    ctx.font = "13px monospace";
     ctx.fillStyle = COLORS.uiDim;
     ctx.textAlign = "center";
     ctx.fillText(t("postgame.matchTab"), w / 2, h - 80);
@@ -2613,7 +2613,7 @@ export class Game {
       }
 
       // Status dot
-      ctx.fillStyle = friend.presence === "offline" ? "#555555"
+      ctx.fillStyle = friend.presence === "offline" ? COLORS.uiDim
         : friend.presence === "online-ingame" ? "#ff6600" : "#44ff88";
       ctx.beginPath();
       ctx.arc(w / 2 - 280, y, 5, 0, Math.PI * 2);
@@ -2625,7 +2625,7 @@ export class Game {
       ctx.fillText(friend.username, w / 2 - 260, y + 4);
 
       ctx.fillStyle = COLORS.uiDim;
-      ctx.font = "12px monospace";
+      ctx.font = "13px monospace";
       ctx.fillText(`Lvl ${friend.level}`, w / 2 - 100, y + 4);
 
       const statusText = friend.presence === "offline" ? t("friends.offline")
@@ -2711,7 +2711,7 @@ export class Game {
     this.drawMenuButton(ctx, w / 2 - 160, 340, 160, 38, t("login.submit"), COLORS.ui, "btn-do-login", mx, my);
     this.drawMenuButton(ctx, w / 2, 340, 160, 38, t("login.register"), COLORS.nova, "btn-to-register", mx, my);
     this.drawMenuButton(ctx, w / 2 + 160, 340, 130, 38, t("login.back"), COLORS.uiDim, "btn-login-back", mx, my);
-    ctx.font = "12px monospace";
+    ctx.font = "13px monospace";
     ctx.textAlign = "center";
     ctx.fillStyle = COLORS.uiDim;
     ctx.fillText(t("login.hint"), w / 2, 380);
@@ -2748,7 +2748,7 @@ export class Game {
     this.drawMenuButton(ctx, w / 2 + 90, 460, 130, 38, t("register.back"), COLORS.uiDim, "btn-register-back", mx, my);
 
     if (this.api.isGuest) {
-      ctx.font = "12px monospace";
+      ctx.font = "13px monospace";
       ctx.fillStyle = "#44ff88";
       ctx.fillText(t("register.guestMigration"), w / 2, 500);
     }
@@ -2793,7 +2793,7 @@ export class Game {
       ctx.strokeStyle = "#ffaa0044";
       ctx.lineWidth = 1;
       ctx.strokeRect(barX, barY, barW, barH);
-      ctx.font = "12px monospace";
+      ctx.font = "13px monospace";
       ctx.fillStyle = COLORS.uiDim;
       if (this.currentUser.level >= MAX_LEVEL) {
         ctx.fillText(`${this.currentUser.xp} XP (Max)`, w / 2, barY + barH + 16);
@@ -2920,7 +2920,7 @@ export class Game {
     // Session stats view
     if (this.partyShowSession && party.gamesPlayed > 0) {
       this.drawPartySessionStats(ctx, w, h, party);
-      ctx.font = "12px monospace";
+      ctx.font = "13px monospace";
       ctx.fillStyle = COLORS.uiDim;
       ctx.fillText("[S] Zurueck zur Lobby", w / 2, h - 50);
       this.drawMenuButton(ctx, w / 2, h - 30, 160, 30, t("party.back"), COLORS.uiDim, "btn-party-leave", mx, my);
@@ -2984,7 +2984,7 @@ export class Game {
 
     // Chat messages (last 5)
     const chatY = settY + 70;
-    ctx.font = "12px monospace";
+    ctx.font = "13px monospace";
     const visibleChat = this.partyChatMessages.slice(-5);
     for (let i = 0; i < visibleChat.length; i++) {
       const msg = visibleChat[i];
@@ -3006,7 +3006,7 @@ export class Game {
     }
 
     // Bottom hints
-    ctx.font = "12px monospace";
+    ctx.font = "13px monospace";
     ctx.fillStyle = COLORS.uiDim;
     const hints: string[] = [t("party.toggleReady"), t("party.chat")];
     if (isLeader) hints.push(t("party.start"));
@@ -3036,7 +3036,7 @@ export class Game {
 
     entries.forEach((s, i) => {
       const y = 185 + i * 26;
-      ctx.font = "12px monospace";
+      ctx.font = "13px monospace";
       ctx.fillStyle = "#cccccc";
       ctx.fillText(`${i + 1}`, sColX[0], y);
       ctx.fillText(s.name, sColX[1], y);
@@ -3134,7 +3134,7 @@ export class Game {
         ctx.fillText(match.player1, bx + 10, my2 + 20);
 
         // VS
-        ctx.font = "10px monospace";
+        ctx.font = "13px monospace";
         ctx.fillStyle = COLORS.uiDim;
         ctx.textAlign = "center";
         ctx.fillText("vs", bx + bw / 2, my2 + 30);
@@ -3185,7 +3185,7 @@ export class Game {
     const value = this.textInputFields[fieldName] || "";
     const displayValue = isPassword ? "*".repeat(value.length) : value;
 
-    ctx.font = "12px monospace";
+    ctx.font = "13px monospace";
     ctx.textAlign = "center";
     ctx.fillStyle = COLORS.uiDim;
     ctx.fillText(label, cx, y - 20);
@@ -3251,7 +3251,7 @@ export class Game {
       ctx.textAlign = "left";
       ctx.fillStyle = c.completed ? "#44ff88" : COLORS.ui;
       ctx.fillText(config.name, w / 2 - 285, y + 18);
-      ctx.font = "12px monospace";
+      ctx.font = "13px monospace";
       ctx.fillStyle = COLORS.uiDim;
       ctx.fillText(config.description, w / 2 - 285, y + 35);
 
@@ -3267,7 +3267,7 @@ export class Game {
       ctx.fillRect(barX, barY, barW * progress, barH);
 
       // Progress text
-      ctx.font = "12px monospace";
+      ctx.font = "13px monospace";
       ctx.textAlign = "center";
       ctx.fillStyle = COLORS.ui;
       ctx.fillText(`${c.progress}/${c.target}`, barX + barW / 2, barY + barH + 14);
@@ -3301,7 +3301,7 @@ export class Game {
       ctx.textAlign = "left";
       ctx.fillStyle = c.completed ? "#44ff88" : COLORS.ui;
       ctx.fillText(config.name, w / 2 - 285, y + 18);
-      ctx.font = "12px monospace";
+      ctx.font = "13px monospace";
       ctx.fillStyle = COLORS.uiDim;
       ctx.fillText(config.description, w / 2 - 285, y + 35);
 
@@ -3315,7 +3315,7 @@ export class Game {
       ctx.fillStyle = c.completed ? "#44ff88" : "#4488ff";
       ctx.fillRect(barX, barY, barW * progress, barH);
 
-      ctx.font = "12px monospace";
+      ctx.font = "13px monospace";
       ctx.textAlign = "center";
       ctx.fillStyle = COLORS.ui;
       ctx.fillText(`${c.progress}/${c.target}`, barX + barW / 2, barY + barH + 14);
@@ -3357,12 +3357,12 @@ export class Game {
       ctx.fillStyle = unlocked ? "#ff44aa" : COLORS.uiDim;
       ctx.fillText(`${unlocked ? "[x]" : "[ ]"} ${ach.name}`, w / 2 - 285, y + 15);
 
-      ctx.font = "12px monospace";
+      ctx.font = "13px monospace";
       ctx.fillStyle = COLORS.uiDim;
       ctx.fillText(ach.description, w / 2 - 285, y + 28);
 
       ctx.textAlign = "right";
-      ctx.fillStyle = unlocked ? "#ff44aa" : "#555577";
+      ctx.fillStyle = unlocked ? "#ff44aa" : COLORS.uiDim;
       ctx.fillText(ach.reward, w / 2 + 290, y + 20);
     }
 
@@ -3469,29 +3469,29 @@ export class Game {
       ctx.strokeRect(x, y, itemW, itemH);
 
       // Color swatch
-      ctx.fillStyle = unlocked ? item.color : "#333333";
+      ctx.fillStyle = unlocked ? item.color : COLORS.uiDim;
       ctx.fillRect(x + 8, y + 8, 12, 12);
 
       // Name
       ctx.font = "bold 12px monospace";
       ctx.textAlign = "left";
-      ctx.fillStyle = unlocked ? COLORS.ui : "#444466";
+      ctx.fillStyle = unlocked ? COLORS.ui : COLORS.uiDim;
       ctx.fillText(item.name, x + 28, y + 18);
 
       // Detail
       if (item.detail) {
-        ctx.font = "11px monospace";
+        ctx.font = "13px monospace";
         ctx.fillStyle = COLORS.uiDim;
         ctx.fillText(item.detail, x + 28, y + 34);
       }
 
       // Lock / Level info
       if (!unlocked) {
-        ctx.font = "11px monospace";
+        ctx.font = "13px monospace";
         ctx.fillStyle = "#ff4444";
         ctx.fillText(item.unlockLevel > 0 ? `Lvl ${item.unlockLevel}` : t("cosmetics.achievement"), x + 28, y + 50);
       } else {
-        ctx.font = "11px monospace";
+        ctx.font = "13px monospace";
         ctx.fillStyle = "#44ff88";
         ctx.fillText(t("cosmetics.unlocked"), x + 28, y + 50);
       }
@@ -3646,7 +3646,7 @@ export class Game {
         } else if (id === this.localPlayerId) {
           ctx.fillStyle = "#4488ff"; // Victim (you) in blue
         } else {
-          ctx.fillStyle = "#444466"; // Others dimmed
+          ctx.fillStyle = COLORS.uiDim; // Others dimmed
         }
 
         ctx.beginPath();
@@ -3671,7 +3671,7 @@ export class Game {
     ctx.fillStyle = "#ff4444";
     ctx.fillText(`ELIMINIERT VON ${this.killCamData.killerName.toUpperCase()}`, boxX + boxW / 2, boxY + boxH - 22);
     if (typeText) {
-      ctx.font = "11px monospace";
+      ctx.font = "13px monospace";
       ctx.fillStyle = "#ff888888";
       ctx.fillText(typeText, boxX + boxW / 2, boxY + boxH - 8);
     }
@@ -3735,8 +3735,8 @@ export class Game {
     ctx.restore();
 
     // Skip hint
-    ctx.font = "12px monospace";
-    ctx.fillStyle = "#444466";
+    ctx.font = "13px monospace";
+    ctx.fillStyle = COLORS.uiDim;
     ctx.textAlign = "center";
     ctx.fillText("Enter = Skip", w / 2, h - 30);
   }
@@ -3843,12 +3843,12 @@ export class Game {
       const config = MUTATOR_CONFIGS[mut];
       ctx.font = "bold 14px monospace";
       ctx.textAlign = "center";
-      ctx.fillStyle = isLocked ? "#cc99ff" : (isScanning ? "#8866cc" : "#444466");
+      ctx.fillStyle = isLocked ? "#cc99ff" : (isScanning ? "#8866cc" : COLORS.uiDim);
       ctx.fillText(config?.name || mut, x + cardW / 2, y + 22);
 
       // Description for locked
       if (isLocked && config) {
-        ctx.font = "11px monospace";
+        ctx.font = "13px monospace";
         ctx.fillStyle = "#aa88ff88";
         ctx.fillText(config.description, x + cardW / 2, y + 40);
       }
@@ -3880,8 +3880,8 @@ export class Game {
     }
 
     // Skip hint
-    ctx.font = "12px monospace";
-    ctx.fillStyle = "#444466";
+    ctx.font = "13px monospace";
+    ctx.fillStyle = COLORS.uiDim;
     ctx.textAlign = "center";
     ctx.fillText("Enter = Skip", w / 2, h - 30);
   }
@@ -3964,7 +3964,7 @@ export class Game {
       ctx.fillStyle = isSelected ? COLORS.ui : (isHovered ? COLORS.ui : COLORS.uiDim);
       ctx.fillText(getControlModeNames()[i], bx + bw / 2, by + 20);
 
-      ctx.font = "11px monospace";
+      ctx.font = "13px monospace";
       ctx.fillStyle = COLORS.uiDim;
       ctx.fillText(getControlModeDescs()[i], bx + bw / 2, by + 38);
 
@@ -4024,7 +4024,7 @@ export class Game {
       ctx.fillStyle = isSelected ? COLORS.ui : (isHovered ? COLORS.ui : COLORS.uiDim);
       ctx.fillText(preset.name, bx + bw / 2, by + 25);
 
-      ctx.font = "11px monospace";
+      ctx.font = "13px monospace";
       ctx.fillStyle = COLORS.uiDim;
       ctx.fillText(preset.description, bx + bw / 2, by + 45);
 
@@ -4072,7 +4072,7 @@ export class Game {
       this.menuClickRegions.push({ x: bx, y: by, width: bw, height: bh, id: regionId });
     }
 
-    ctx.font = "12px monospace";
+    ctx.font = "13px monospace";
     ctx.fillStyle = COLORS.uiDim;
     ctx.fillText(t("settings.hint"), w / 2, 360);
 
@@ -4133,7 +4133,7 @@ export class Game {
       const mutId = hoveredMutRegion.replace("mutator-", "");
       const desc = MUTATOR_CONFIGS[mutId]?.description;
       if (desc) {
-        ctx.font = "12px monospace";
+        ctx.font = "13px monospace";
         ctx.fillStyle = "#aa88ff";
         ctx.textAlign = "center";
         ctx.fillText(desc, w / 2, 510);
@@ -4143,7 +4143,7 @@ export class Game {
     // Roulette toggle
     const rouletteRegion = "btn-roulette-toggle";
     const rouletteHovered = this.hitTestLocal(mx, my) === rouletteRegion;
-    const rouletteColor = this.rouletteEnabled ? "#ff44aa" : (rouletteHovered ? COLORS.ui : "#444466");
+    const rouletteColor = this.rouletteEnabled ? "#ff44aa" : (rouletteHovered ? COLORS.ui : COLORS.uiDim);
     ctx.font = "bold 13px monospace";
     ctx.textAlign = "center";
     ctx.fillStyle = rouletteColor;
@@ -4187,7 +4187,7 @@ export class Game {
     const cursor = Math.sin(performance.now() / 300) > 0 ? "_" : "";
     ctx.fillText(this.roomCodeInput + cursor, w / 2, 262);
 
-    ctx.font = "12px monospace";
+    ctx.font = "13px monospace";
     ctx.fillStyle = COLORS.uiDim;
     ctx.fillText(t("lobby.joinHint"), w / 2, 298);
 
@@ -4260,7 +4260,7 @@ export class Game {
       ctx.fillText(names[i], bx + bw / 2, by + 20);
 
       // Word-wrap description into 2 lines
-      ctx.font = "11px monospace";
+      ctx.font = "13px monospace";
       ctx.fillStyle = COLORS.uiDim;
       const words = descs[i].split(" ");
       let line1 = "";

@@ -618,7 +618,7 @@ export class Renderer {
     config: typeof SHIP_CONFIGS[keyof typeof SHIP_CONFIGS],
     isLocal: boolean,
   ): void {
-    this.ctx.font = "12px monospace";
+    this.ctx.font = "13px monospace";
     this.ctx.textAlign = "center";
     this.ctx.fillStyle = isLocal ? config.color : COLORS.uiDim;
     this.ctx.fillText(
@@ -751,7 +751,7 @@ export class Renderer {
 
       // Team indicator
       if (myTeam) {
-        ctx.font = "12px monospace";
+        ctx.font = "13px monospace";
         ctx.fillStyle = myTeam === "red" ? "#ff4444" : "#4488ff";
         ctx.fillText(t("mode.capture.yourTeam", { team: myTeam === "red" ? t("mode.capture.teamRed") : t("mode.capture.teamBlue") }), w / 2, 90);
       }
@@ -790,7 +790,7 @@ export class Renderer {
     // Active mutator display (top-left below scoreboard)
     if (state.mutators.length > 0) {
       const scoreboardEnd = Object.keys(state.players).length * 18 + 30;
-      ctx.font = "12px monospace";
+      ctx.font = "13px monospace";
       ctx.textAlign = "left";
       ctx.fillStyle = "#888888";
       ctx.fillText(t("hud.mutators"), 20, scoreboardEnd);
@@ -867,7 +867,7 @@ export class Renderer {
 
     // Room code (below timer, top right) for online games
     if (roomCode) {
-      ctx.font = "12px monospace";
+      ctx.font = "13px monospace";
       ctx.textAlign = "right";
       if (copiedFeedback > 0) {
         ctx.fillStyle = "#44ff88";
@@ -938,7 +938,7 @@ export class Renderer {
       });
 
     const ctx = this.ctx;
-    ctx.font = "12px monospace";
+    ctx.font = "13px monospace";
     ctx.textAlign = "left";
 
     for (let i = 0; i < players.length; i++) {
@@ -1141,7 +1141,7 @@ export class Renderer {
       // Stats with icons
       const iconColor = isSelected ? config.color : COLORS.uiDim;
       const statX = bx + 14;
-      ctx.font = "11px monospace";
+      ctx.font = "13px monospace";
       ctx.textAlign = "left";
       ctx.fillStyle = COLORS.uiDim;
 
@@ -1206,7 +1206,7 @@ export class Renderer {
       }
 
       // Map name
-      ctx.font = "12px monospace";
+      ctx.font = "13px monospace";
       ctx.fillStyle = isSelected ? COLORS.ui : (isHovered ? COLORS.ui : COLORS.uiDim);
       ctx.fillText(map.name, bx + bw / 2, by + 16);
 
@@ -1299,12 +1299,12 @@ export class Renderer {
         ctx.fillRect(bx, by, bw, bh);
       }
 
-      ctx.font = "bold 12px monospace";
+      ctx.font = "bold 13px monospace";
       ctx.fillStyle = isSelected ? COLORS.ui : (isHovered ? COLORS.ui : COLORS.uiDim);
       ctx.fillText(modeNames[i], bx + bw / 2, by + 20);
 
-      ctx.font = "10px monospace";
-      ctx.fillStyle = isSelected ? COLORS.uiDim : (isHovered ? COLORS.uiDim : "#555577");
+      ctx.font = "13px monospace";
+      ctx.fillStyle = COLORS.uiDim;
       ctx.fillText(modeDescs[i], bx + bw / 2, by + 40);
 
       this.clickRegions.push({ x: bx, y: by, width: bw, height: bh, id: `mode-${i}` });
@@ -1424,7 +1424,7 @@ export class Renderer {
     py += 20;
 
     // HP
-    ctx.font = "11px monospace";
+    ctx.font = "13px monospace";
     ctx.fillStyle = COLORS.ui;
     ctx.fillText(`${t("ship.stat.hp" as any)}: ${config.maxHp}`, px, py);
     py += 16;
@@ -1438,17 +1438,17 @@ export class Renderer {
     ctx.fillText(`${t("ship.stat.weapon" as any)}: ${t(`weapon.${config.weaponType}` as any)}`, px, py);
     py += 14;
     ctx.fillStyle = COLORS.uiDim;
-    ctx.font = "10px monospace";
+    ctx.font = "13px monospace";
     ctx.fillText(t(`weapon.${config.weaponType}.desc` as any), px, py);
     py += 18;
 
     // Special + desc
     ctx.fillStyle = COLORS.ui;
-    ctx.font = "11px monospace";
+    ctx.font = "13px monospace";
     ctx.fillText(`${t("ship.stat.special" as any)}: ${t(`special.${config.specialType}` as any)}`, px, py);
     py += 14;
     ctx.fillStyle = COLORS.uiDim;
-    ctx.font = "10px monospace";
+    ctx.font = "13px monospace";
     ctx.fillText(t(`special.${config.specialType}.desc` as any), px, py);
 
     ctx.textAlign = "center";
