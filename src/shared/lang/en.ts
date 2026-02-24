@@ -75,7 +75,7 @@ export const en: Record<keyof typeof de, string> = {
   "menu.back": "Back",
   "menu.controls1": "WASD = Move  |  Mouse = Aim  |  Left Click = Shoot",
   "menu.controls2": "Right Click / Space = Special  |  Shift = Boost",
-  "menu.shortcuts": "Space / F / P = Shortcuts",
+  "menu.shortcuts": "Space / F / P / H = Shortcuts",
 
   // Mode descriptions
   "mode.desc.0": "Most kills wins",

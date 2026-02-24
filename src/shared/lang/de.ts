@@ -73,7 +73,7 @@ export const de = {
   "menu.back": "Zurueck",
   "menu.controls1": "WASD = Bewegen  |  Maus = Zielen  |  Linksklick = Schiessen",
   "menu.controls2": "Rechtsklick / Leertaste = Spezial  |  Shift = Boost",
-  "menu.shortcuts": "Space / F / P = Tastenkuerzel",
+  "menu.shortcuts": "Space / F / P / H = Tastenkuerzel",
 
   // Mode descriptions
   "mode.desc.0": "Meiste Kills gewinnt",

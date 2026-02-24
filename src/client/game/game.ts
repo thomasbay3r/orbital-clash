@@ -461,6 +461,10 @@ export class Game {
       case "tournament-bracket":
         this.drawTournamentBracket();
         break;
+      case "help":
+        if (this.tutorialResetFeedback > 0) this.tutorialResetFeedback -= dt;
+        this.drawHelp();
+        break;
     }
 
     requestAnimationFrame((t) => this.loop(t));
@@ -532,6 +536,7 @@ export class Game {
         }
       }
       if (key === "p") this.screen = "profile";
+      if (key === "h") this.screen = "help";
       if (key === "l" && !this.api.isAccount) {
         this.textInputFields = { email: "", password: "" };
         this.textInputActive = null;
@@ -774,6 +779,15 @@ export class Game {
       if (key === "4") this.cosmeticCategory = 3;
       if (key === "arrowleft") this.cosmeticCategory = Math.max(0, this.cosmeticCategory - 1);
       if (key === "arrowright") this.cosmeticCategory = Math.min(3, this.cosmeticCategory + 1);
+    } else if (this.screen === "help") {
+      if (key === "escape") this.screen = "menu";
+      if (key === "r") {
+        this.tutorialSeen.clear();
+        this.tutorialEnabled = true;
+        this.firstGameStarted = false;
+        this.saveTutorialState();
+        this.tutorialResetFeedback = 2;
+      }
     } else if (this.screen === "matchmaking") {
       if (key === "escape") {
         this.cancelMatchmaking();
@@ -3693,6 +3707,91 @@ export class Game {
       this.tutorialActive = "cosmetics";
       this.drawTutorialBanner(ctx, w, t("tutorial.banner.cosmetics"));
     }
+  }
+
+  private drawHelp(): void {
+    const ctx = this.canvas.getContext("2d")!;
+    const w = this.canvas.width = window.innerWidth;
+    const h = this.canvas.height = window.innerHeight;
+    this.menuClickRegions = [];
+    ctx.fillStyle = COLORS.background;
+    ctx.fillRect(0, 0, w, h);
+
+    ctx.textAlign = "center";
+    ctx.font = "bold 36px monospace";
+    ctx.fillStyle = COLORS.ui;
+    ctx.fillText(t("help.title"), w / 2, 60);
+
+    ctx.textAlign = "left";
+    const x = w / 2 - 300;
+    let y = 110;
+    const section = (title: string, color: string) => {
+      ctx.font = "bold 16px monospace";
+      ctx.fillStyle = color;
+      ctx.fillText(title, x, y);
+      y += 24;
+    };
+    const line = (text: string) => {
+      ctx.font = "14px monospace";
+      ctx.fillStyle = COLORS.ui;
+      ctx.fillText(text, x + 10, y);
+      y += 20;
+    };
+    const dimLine = (text: string) => {
+      ctx.font = "14px monospace";
+      ctx.fillStyle = COLORS.uiDim;
+      ctx.fillText(text, x + 10, y);
+      y += 20;
+    };
+
+    // Controls
+    section(t("help.controls.title"), "#ffaa00");
+    line(t("help.controls.move"));
+    line(t("help.controls.aim"));
+    line(t("help.controls.shoot"));
+    line(t("help.controls.special"));
+    line(t("help.controls.boost"));
+    line(t("help.controls.emote"));
+    line(t("help.controls.chat"));
+    y += 10;
+
+    // Ships
+    section(t("help.ships.title"), "#00f0ff");
+    line(t("help.ships.viper"));
+    line(t("help.ships.titan"));
+    line(t("help.ships.specter"));
+    line(t("help.ships.nova"));
+    y += 10;
+
+    // Modes
+    section(t("help.modes.title"), "#44ff88");
+    dimLine(t("help.modes.list"));
+    y += 10;
+
+    // Mutators
+    section(t("help.mutators.title"), "#aa88ff");
+    dimLine(t("help.mutators.desc"));
+    y += 10;
+
+    // Social
+    section(t("help.social.title"), "#ff44aa");
+    line(t("help.social.desc"));
+    y += 20;
+
+    // Reset tutorial button
+    ctx.textAlign = "center";
+    ctx.font = "bold 14px monospace";
+    ctx.fillStyle = this.tutorialResetFeedback > 0 ? "#44ff88" : COLORS.uiDim;
+    ctx.fillText(
+      this.tutorialResetFeedback > 0 ? t("help.tutorialReset") : t("help.resetTutorial"),
+      w / 2, y,
+    );
+    y += 40;
+
+    // Back hint
+    ctx.font = "13px monospace";
+    ctx.fillStyle = COLORS.uiDim;
+    ctx.fillText("[Escape] " + t("help.back"), w / 2, y);
   }
 
   // ===== Kill-Cam & Highlights =====
