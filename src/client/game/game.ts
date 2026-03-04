@@ -1048,6 +1048,7 @@ export class Game {
           this.textInputError = "Freunde nur mit Konto verfuegbar";
         }
       }
+      if (hit === "button-help") this.screen = "help";
     } else if (this.screen === "game-config") {
       // Game config: ship/map/mode selection
       const localHit = this.hitTestLocal(mx, my);

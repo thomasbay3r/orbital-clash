@@ -1068,6 +1068,9 @@ export class Renderer {
     }
     this.drawButton(ctx, w / 2 + 90, btnY + 250, 160, 36, t("menu.friends"), COLORS.uiDim, "button-friends", hoveredId);
 
+    // Help button — small, below main buttons
+    this.drawButton(ctx, w / 2, btnY + 300, 100, 30, t("help.title"), COLORS.uiDim, "button-help", hoveredId);
+
     // Controls hint (brighter than uiDim for readability on dark background)
     ctx.font = "14px monospace";
     ctx.fillStyle = "#9999bb";

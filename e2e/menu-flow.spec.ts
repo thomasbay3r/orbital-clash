@@ -352,6 +352,24 @@ test.describe("Menu Flow", () => {
     await waitForScreen(page, "menu");
   });
 
+  test("help screen accessible via mouse click from main menu", async ({ page }) => {
+    await waitForGameReady(page);
+    await waitForScreen(page, "menu");
+    // Wait a frame for the hub render loop to populate click regions
+    await page.waitForTimeout(100);
+    // Find the help button in the renderer's click regions
+    const helpBtnPos = await page.evaluate(() => {
+      const r = (window as any).__game?.renderer;
+      if (!r) return null;
+      const regions: any[] = r.getClickRegions ? r.getClickRegions() : (r.clickRegions ?? []);
+      return regions.find((reg: any) => reg.id === "button-help") ?? null;
+    });
+    // Before implementation: helpBtnPos will be null — test fails here
+    expect(helpBtnPos).not.toBeNull();
+    await page.mouse.click(helpBtnPos!.x + helpBtnPos!.width / 2, helpBtnPos!.y + helpBtnPos!.height / 2);
+    await waitForScreen(page, "help");
+  });
+
   test("help screen tutorial reset button is clickable", async ({ page }) => {
     await waitForGameReady(page);
     await waitForScreen(page, "menu");
