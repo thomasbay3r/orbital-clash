@@ -333,4 +333,42 @@ test.describe("Menu Flow", () => {
     const afterClick = await page.evaluate(() => (window as any).__game._testState.tutorialActive);
     expect(afterClick).toBeNull();
   });
+
+  test("help screen back button is clickable", async ({ page }) => {
+    await waitForGameReady(page);
+    await waitForScreen(page, "menu");
+    // Navigate to help screen via H key
+    await page.keyboard.press("h");
+    await waitForScreen(page, "help");
+    // Wait a frame for click regions to be populated
+    await page.waitForTimeout(100);
+    // Find the back button click region and click its center
+    const region = await page.evaluate(() => {
+      const g = (window as any).__game;
+      return g.menuClickRegions.find((r: any) => r.id === "button-help-back");
+    });
+    expect(region).not.toBeNull();
+    await page.mouse.click(region.x + region.width / 2, region.y + region.height / 2);
+    await waitForScreen(page, "menu");
+  });
+
+  test("help screen tutorial reset button is clickable", async ({ page }) => {
+    await waitForGameReady(page);
+    await waitForScreen(page, "menu");
+    await page.keyboard.press("h");
+    await waitForScreen(page, "help");
+    // Wait a frame for click regions to be populated
+    await page.waitForTimeout(100);
+    // Find the reset button click region and click its center
+    const region = await page.evaluate(() => {
+      const g = (window as any).__game;
+      return g.menuClickRegions.find((r: any) => r.id === "button-help-reset");
+    });
+    expect(region).not.toBeNull();
+    await page.mouse.click(region.x + region.width / 2, region.y + region.height / 2);
+    // tutorialResetFeedback should be set to a positive value
+    await page.waitForTimeout(100);
+    const feedback = await page.evaluate(() => (window as any).__game._testState.tutorialResetFeedback);
+    expect(feedback).toBeGreaterThan(0);
+  });
 });

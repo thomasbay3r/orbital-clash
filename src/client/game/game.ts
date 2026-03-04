@@ -1186,6 +1186,17 @@ export class Game {
       if (!hit) return;
       if (hit.startsWith("btn-cosmetics-tab-")) { this.cosmeticCategory = parseInt(hit.split("-")[3]); }
       if (hit === "btn-cosmetics-back") this.screen = "profile";
+    } else if (this.screen === "help") {
+      const hit = this.hitTestLocal(mx, my);
+      if (!hit) return;
+      if (hit === "button-help-back") this.screen = "menu";
+      if (hit === "button-help-reset") {
+        this.tutorialSeen.clear();
+        this.tutorialEnabled = true;
+        this.firstGameStarted = false;
+        this.saveTutorialState();
+        this.tutorialResetFeedback = 2;
+      }
     } else if (this.screen === "matchmaking") {
       const hit = this.hitTestLocal(mx, my);
       if (!hit) return;
@@ -3755,6 +3766,8 @@ export class Game {
     const w = this.canvas.width = window.innerWidth;
     const h = this.canvas.height = window.innerHeight;
     this.menuClickRegions = [];
+    const mx = this.input.getMouseX();
+    const my = this.input.getMouseY();
     ctx.fillStyle = COLORS.background;
     ctx.fillRect(0, 0, w, h);
 
@@ -3820,19 +3833,13 @@ export class Game {
     y += 20;
 
     // Reset tutorial button
-    ctx.textAlign = "center";
-    ctx.font = "bold 14px monospace";
-    ctx.fillStyle = this.tutorialResetFeedback > 0 ? "#44ff88" : COLORS.uiDim;
-    ctx.fillText(
-      this.tutorialResetFeedback > 0 ? t("help.tutorialReset") : t("help.resetTutorial"),
-      w / 2, y,
-    );
-    y += 40;
+    const resetColor = this.tutorialResetFeedback > 0 ? "#44ff88" : COLORS.uiDim;
+    const resetLabel = this.tutorialResetFeedback > 0 ? t("help.tutorialReset") : t("help.resetTutorial");
+    this.drawMenuButton(ctx, w / 2, y, 280, 36, resetLabel, resetColor, "button-help-reset", mx, my);
+    y += 55;
 
-    // Back hint
-    ctx.font = "13px monospace";
-    ctx.fillStyle = COLORS.uiDim;
-    ctx.fillText("[Escape] " + t("help.back"), w / 2, y);
+    // Back button
+    this.drawMenuButton(ctx, w / 2, y, 180, 36, t("help.back"), COLORS.uiDim, "button-help-back", mx, my);
   }
 
   // ===== Kill-Cam & Highlights =====
