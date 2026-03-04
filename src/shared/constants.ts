@@ -467,6 +467,8 @@ export const DIFFICULTY_PRESETS: BotDifficultyPreset[] = [
 export const DEFAULT_DIFFICULTY_INDEX = 2;
 
 // ===== Tutorial =====
+export const TUTORIAL_BANNER_HEIGHT = 44;
+
 export type TutorialScreenId =
   | "game-config" | "mod-select" | "settings" | "first-gameplay"
   | "profile" | "challenges" | "cosmetics" | "friends"

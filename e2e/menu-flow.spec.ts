@@ -285,40 +285,51 @@ test.describe("Menu Flow", () => {
   });
 
   test("tutorial overlay is dismissable by mouse click", async ({ page }) => {
-    await waitForGameReady(page);
-    // Force tutorial to show by resetting state
-    await page.evaluate(() => {
-      const game = (window as any).__game;
-      game.tutorialEnabled = true;
-      game.tutorialSeen = new Set();
+    // Re-enable tutorial via localStorage then reload so loadTutorialState() picks it up.
+    // Use addInitScript to override the beforeEach script for this reload.
+    await page.addInitScript(() => {
+      localStorage.setItem("tutorialEnabled", "true");
+      localStorage.setItem("tutorialSeen", JSON.stringify([]));
     });
+    await page.reload();
+    await waitForGameReady(page);
     // Navigate to game-config where tutorial overlay shows
     await page.keyboard.press("Enter");
     await waitForScreen(page, "game-config");
+    // Wait a frame for render loop to populate tutorialActive
+    await page.waitForTimeout(100);
     // Tutorial overlay should be active
     const beforeClick = await page.evaluate(() => (window as any).__game._testState.tutorialActive);
     expect(beforeClick).toBe("game-config");
     // Click anywhere on the canvas
     await page.mouse.click(640, 400);
+    // Wait a frame for dismissal to register
+    await page.waitForTimeout(100);
     // Tutorial should be dismissed
     const afterClick = await page.evaluate(() => (window as any).__game._testState.tutorialActive);
     expect(afterClick).toBeNull();
   });
 
   test("tutorial banner is dismissable by clicking on it", async ({ page }) => {
-    await waitForGameReady(page);
-    await page.evaluate(() => {
-      const game = (window as any).__game;
-      game.tutorialEnabled = true;
-      game.tutorialSeen = new Set();
+    // Re-enable tutorial via localStorage then reload so loadTutorialState() picks it up.
+    // Use addInitScript to override the beforeEach script for this reload.
+    await page.addInitScript(() => {
+      localStorage.setItem("tutorialEnabled", "true");
+      localStorage.setItem("tutorialSeen", JSON.stringify([]));
     });
+    await page.reload();
+    await waitForGameReady(page);
     // Navigate to profile where banner shows
-    await page.keyboard.press("KeyP");
+    await page.keyboard.press("p");
     await waitForScreen(page, "profile");
+    // Wait a frame for render loop to populate tutorialActive
+    await page.waitForTimeout(100);
     const beforeClick = await page.evaluate(() => (window as any).__game._testState.tutorialActive);
     expect(beforeClick).toBe("profile");
     // Click in the banner area (top 44px)
     await page.mouse.click(640, 20);
+    // Wait a frame for dismissal to register
+    await page.waitForTimeout(100);
     const afterClick = await page.evaluate(() => (window as any).__game._testState.tutorialActive);
     expect(afterClick).toBeNull();
   });

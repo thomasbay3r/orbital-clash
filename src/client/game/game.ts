@@ -19,6 +19,7 @@ import {
   SKIN_CONFIGS, TRAIL_CONFIGS, KILL_EFFECT_CONFIGS, TITLE_CONFIGS, EMOTE_CONFIGS,
   DAILY_CHALLENGE_POOL, WEEKLY_CHALLENGE_POOL, ACHIEVEMENT_CONFIGS,
   TUTORIAL_SCREENS,
+  TUTORIAL_BANNER_HEIGHT,
 } from "../../shared/constants";
 import type { TutorialScreenId } from "../../shared/constants";
 import { ChallengeProgress } from "../../shared/types";
@@ -1001,7 +1002,7 @@ export class Game {
         this.markTutorialSeen(this.tutorialActive);
         return;
       }
-      if (config?.type === "banner" && my < 44) {
+      if (config?.type === "banner" && my < TUTORIAL_BANNER_HEIGHT) {
         this.markTutorialSeen(this.tutorialActive);
         return;
       }
@@ -3366,7 +3367,7 @@ export class Game {
   }
 
   private drawTutorialBanner(ctx: CanvasRenderingContext2D, w: number, text: string): void {
-    const bannerH = 44;
+    const bannerH = TUTORIAL_BANNER_HEIGHT;
     ctx.fillStyle = "rgba(10, 14, 39, 0.92)";
     ctx.fillRect(0, 0, w, bannerH);
     ctx.strokeStyle = COLORS.uiDim;
