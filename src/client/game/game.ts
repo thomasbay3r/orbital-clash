@@ -3398,7 +3398,7 @@ export class Game {
   }
 
   private drawTutorialOverlay(ctx: CanvasRenderingContext2D, w: number, h: number, text: string): void {
-    ctx.fillStyle = "rgba(10, 14, 39, 0.85)";
+    ctx.fillStyle = "rgba(10, 14, 39, 0.94)";
     ctx.fillRect(0, 0, w, h);
     ctx.font = "bold 24px monospace";
     ctx.fillStyle = "#ffaa00";
@@ -3423,7 +3423,7 @@ export class Game {
     if (line) ctx.fillText(line, w / 2, y);
     ctx.font = "bold 14px monospace";
     ctx.fillStyle = COLORS.uiDim;
-    ctx.fillText(`${t("tutorial.ok")}    ${t("tutorial.dismiss")}`, w / 2, h / 2 + 80);
+    ctx.fillText(`${t("tutorial.ok")}    ${t("tutorial.dismiss")}`, w / 2, h - 40);
   }
 
   private drawInputField(
@@ -3795,7 +3795,20 @@ export class Game {
     const dimLine = (text: string) => {
       ctx.font = "14px monospace";
       ctx.fillStyle = COLORS.uiDim;
-      ctx.fillText(text, x + 10, y);
+      const maxW = w - (x + 10) - 40;
+      const words = text.split(" ");
+      let lineBuf = "";
+      for (const word of words) {
+        const test = lineBuf + (lineBuf ? " " : "") + word;
+        if (ctx.measureText(test).width > maxW && lineBuf) {
+          ctx.fillText(lineBuf, x + 10, y);
+          lineBuf = word;
+          y += 18;
+        } else {
+          lineBuf = test;
+        }
+      }
+      if (lineBuf) ctx.fillText(lineBuf, x + 10, y);
       y += 20;
     };
 
@@ -4372,9 +4385,14 @@ export class Game {
       ctx.fillStyle = isSelected ? COLORS.ui : (isHovered ? COLORS.ui : COLORS.uiDim);
       ctx.fillText(preset.name, bx + bw / 2, by + 25);
 
-      ctx.font = "13px monospace";
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(bx + 2, by + 32, bw - 4, 20);
+      ctx.clip();
+      ctx.font = "11px monospace";
       ctx.fillStyle = COLORS.uiDim;
       ctx.fillText(preset.description, bx + bw / 2, by + 45);
+      ctx.restore();
 
       const barW = bw - 20;
       const barH = 4;
@@ -4636,8 +4654,13 @@ export class Game {
           line2 = line2 ? `${line2} ${word}` : word;
         }
       }
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(bx + 2, by + 27, bw - 4, 36);
+      ctx.clip();
       ctx.fillText(line1, bx + bw / 2, by + 38);
       if (line2) ctx.fillText(line2, bx + bw / 2, by + 50);
+      ctx.restore();
 
       this.menuClickRegions.push({ x: bx, y: by, width: bw, height: bh, id: regionId });
     }

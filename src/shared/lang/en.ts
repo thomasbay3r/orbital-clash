@@ -362,7 +362,7 @@ export const en: Record<keyof typeof de, string> = {
   "help.mutators.desc": "Mutators change the rules: Hypergravity, Zero-G, Big Head, Ricochet, Glass Cannon, Mystery Loadout, Fog of War, Speed Demon, Friendly Fire, Mirror Match.",
   "help.social.title": "SOCIAL",
   "help.social.desc": "F = Friends | N = Create party | J = Join party | P = Profile",
-  "help.resetTutorial": "[R] Reset tutorial",
+  "help.resetTutorial": "Reset tutorial",
   "help.tutorialReset": "Tutorial has been reset!",
   "help.back": "Back",
 

@@ -1038,8 +1038,9 @@ export class Renderer {
     }
     ctx.globalAlpha = 1;
 
-    // Title
-    ctx.font = "bold 56px monospace";
+    // Title (responsive font size)
+    const titleSize = Math.min(56, Math.floor(w / 14));
+    ctx.font = `bold ${titleSize}px monospace`;
     ctx.textAlign = "center";
     ctx.shadowColor = COLORS.gravityWell;
     ctx.shadowBlur = 30;
@@ -1306,9 +1307,14 @@ export class Renderer {
       ctx.fillStyle = isSelected ? COLORS.ui : (isHovered ? COLORS.ui : COLORS.uiDim);
       ctx.fillText(modeNames[i], bx + bw / 2, by + 20);
 
-      ctx.font = "13px monospace";
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(bx + 2, by + 28, bw - 4, 22);
+      ctx.clip();
+      ctx.font = "11px monospace";
       ctx.fillStyle = COLORS.uiDim;
       ctx.fillText(modeDescs[i], bx + bw / 2, by + 40);
+      ctx.restore();
 
       this.clickRegions.push({ x: bx, y: by, width: bw, height: bh, id: `mode-${i}` });
     }

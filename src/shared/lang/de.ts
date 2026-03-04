@@ -159,7 +159,7 @@ export const de = {
   "profile.achievements": "Erfolge: {done}/{total}",
   "profile.guestHint": "Registriere dich um Freunde hinzuzufuegen und Cosmetics freizuschalten!",
   "profile.challengesBtn": "Herausforderungen",
-  "profile.cosmeticsBtn": "Cosmetics",
+  "profile.cosmeticsBtn": "Kosmetik",
   "profile.backBtn": "Zurueck",
   "profile.logout": "Abmelden",
   "profile.account": "Profil",
@@ -180,7 +180,7 @@ export const de = {
   "challenges.back": "Zurueck zum Profil",
 
   // ===== Cosmetics =====
-  "cosmetics.title": "COSMETICS",
+  "cosmetics.title": "KOSMETIK",
   "cosmetics.skins": "Skins",
   "cosmetics.trails": "Trails",
   "cosmetics.effects": "Effekte",
@@ -244,7 +244,7 @@ export const de = {
   "settings.back": "Zurueck",
 
   // ===== Online Lobby =====
-  "lobby.title": "MULTIPLAYER LOBBY",
+  "lobby.title": "MEHRSPIELER-LOBBY",
   "lobby.createRoom": "Neuer Raum erstellen",
   "lobby.enterCode": "Oder Raum-Code eingeben:",
   "lobby.joinHint": "ENTER zum Beitreten",
@@ -289,7 +289,7 @@ export const de = {
   "error.connectionFailed": "Verbindung fehlgeschlagen",
 
   // ===== Party =====
-  "party.title": "PARTY LOBBY",
+  "party.title": "PARTY-LOBBY",
   "party.create": "Party erstellen (N)",
   "party.join": "Party beitreten",
   "party.enterCode": "Party-Code eingeben:",
@@ -360,7 +360,7 @@ export const de = {
   "help.mutators.desc": "Mutatoren veraendern die Spielregeln: Hypergravity, Zero-G, Big Head, Ricochet, Glass Cannon, Mystery Loadout, Fog of War, Speed Demon, Friendly Fire, Mirror Match.",
   "help.social.title": "SOCIAL",
   "help.social.desc": "F = Freunde | N = Party erstellen | J = Party beitreten | P = Profil",
-  "help.resetTutorial": "[R] Tutorial zuruecksetzen",
+  "help.resetTutorial": "Tutorial zuruecksetzen",
   "help.tutorialReset": "Tutorial zurueckgesetzt!",
   "help.back": "Zurueck",
 
