@@ -994,6 +994,19 @@ export class Game {
       this.audioInitialized = true;
     }
 
+    // Tutorial click-dismiss: overlay = any click dismisses; banner = click in top 44px dismisses
+    if (this.tutorialActive) {
+      const config = TUTORIAL_SCREENS.find((s) => s.id === this.tutorialActive);
+      if (config?.type === "overlay") {
+        this.markTutorialSeen(this.tutorialActive);
+        return;
+      }
+      if (config?.type === "banner" && my < 44) {
+        this.markTutorialSeen(this.tutorialActive);
+        return;
+      }
+    }
+
     if (this.screen === "menu") {
       // Hub: check overlay + main buttons
       const localHit = this.hitTestLocal(mx, my);

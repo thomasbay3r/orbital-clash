@@ -283,4 +283,43 @@ test.describe("Menu Flow", () => {
     const state = await getTestState(page);
     expect(state.selectedMode).toBe(7);
   });
+
+  test("tutorial overlay is dismissable by mouse click", async ({ page }) => {
+    await waitForGameReady(page);
+    // Force tutorial to show by resetting state
+    await page.evaluate(() => {
+      const game = (window as any).__game;
+      game.tutorialEnabled = true;
+      game.tutorialSeen = new Set();
+    });
+    // Navigate to game-config where tutorial overlay shows
+    await page.keyboard.press("Enter");
+    await waitForScreen(page, "game-config");
+    // Tutorial overlay should be active
+    const beforeClick = await page.evaluate(() => (window as any).__game._testState.tutorialActive);
+    expect(beforeClick).toBe("game-config");
+    // Click anywhere on the canvas
+    await page.mouse.click(640, 400);
+    // Tutorial should be dismissed
+    const afterClick = await page.evaluate(() => (window as any).__game._testState.tutorialActive);
+    expect(afterClick).toBeNull();
+  });
+
+  test("tutorial banner is dismissable by clicking on it", async ({ page }) => {
+    await waitForGameReady(page);
+    await page.evaluate(() => {
+      const game = (window as any).__game;
+      game.tutorialEnabled = true;
+      game.tutorialSeen = new Set();
+    });
+    // Navigate to profile where banner shows
+    await page.keyboard.press("KeyP");
+    await waitForScreen(page, "profile");
+    const beforeClick = await page.evaluate(() => (window as any).__game._testState.tutorialActive);
+    expect(beforeClick).toBe("profile");
+    // Click in the banner area (top 44px)
+    await page.mouse.click(640, 20);
+    const afterClick = await page.evaluate(() => (window as any).__game._testState.tutorialActive);
+    expect(afterClick).toBeNull();
+  });
 });
